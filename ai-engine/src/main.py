@@ -21,7 +21,7 @@ app.add_middleware(
 llm_service = GeminiLLMService()
 
 @app.post("/api/v1/extract", response_model=ExtractionResult)
-async def extract_evidence(request: ExtractRequest):
+def extract_evidence(request: ExtractRequest):
     """
     Takes a candidate's raw evidence payload and a requirement,
     and returns a strictly formatted ExtractionResult.

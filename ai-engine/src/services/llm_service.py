@@ -11,7 +11,7 @@ class GeminiLLMService:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set in the environment.")
         self.client = genai.Client(api_key=self.api_key)
-        self.model_name = "gemini-2.5-flash"
+        self.model_name = "gemini-3.5-flash"
         
         self.system_prompt = """
         You are the EIP Evidence Extractor, part of the Isolated Intelligence Zone.

@@ -3,3 +3,6 @@ uvicorn
 pydantic
 google-genai
 python-dotenv
+sqlmodel>=0.0.16
+python-multipart
+PyPDF2

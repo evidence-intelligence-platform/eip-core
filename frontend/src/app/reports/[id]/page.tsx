@@ -1,4 +1,4 @@
-export default function ReportPage({ params }: { params: { id: string } }) {
+export default function ReportPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="border-b border-border-color pb-4 mb-8 text-center">
@@ -13,7 +13,7 @@ export default function ReportPage({ params }: { params: { id: string } }) {
             <span className="px-3 py-1 bg-green-900/30 text-green-400 border border-green-500/50 rounded text-sm font-bold">VERIFIED ✅</span>
           </div>
           <div className="bg-background p-4 rounded mb-4">
-            <p className="text-sm mb-2"><strong className="text-primary">AI REASONING:</strong> "Alice has implemented complex global state using React Context in multiple repositories."</p>
+            <p className="text-sm mb-2"><strong className="text-primary">AI REASONING:</strong> &quot;Alice has implemented complex global state using React Context in multiple repositories.&quot;</p>
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex items-center">
@@ -33,7 +33,7 @@ export default function ReportPage({ params }: { params: { id: string } }) {
             <span className="px-3 py-1 bg-yellow-900/30 text-yellow-400 border border-yellow-500/50 rounded text-sm font-bold">INSUFFICIENT EVIDENCE ⚠️</span>
           </div>
           <div className="bg-background p-4 rounded mb-4">
-            <p className="text-sm mb-2"><strong className="text-primary">AI REASONING:</strong> "No GitHub Actions or TravisCI configurations were found in the provided repositories. The ChatGPT logs also do not contain discussions about deployment pipelines."</p>
+            <p className="text-sm mb-2"><strong className="text-primary">AI REASONING:</strong> &quot;No GitHub Actions or TravisCI configurations were found in the provided repositories. The ChatGPT logs also do not contain discussions about deployment pipelines.&quot;</p>
           </div>
           <div className="text-sm p-3 border border-yellow-500/30 bg-yellow-900/10 rounded">
             <strong className="text-yellow-500">SUGGESTION:</strong> Ask candidate about this in the human interview.

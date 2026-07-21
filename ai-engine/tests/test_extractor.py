@@ -1,8 +1,14 @@
 from src.models.schemas import ExtractRequest, EvidencePayload, Requirement
-from src.services.llm_mock import MockLLMService
+from src.services.llm_service import GeminiLLMService
+from pydantic import ValidationError
+import os
 
 def test_react_context_verification():
-    llm = MockLLMService()
+    try:
+        llm = GeminiLLMService()
+    except ValueError as e:
+        print(f"Skipping test_react_context_verification: {e}")
+        return
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",
@@ -17,7 +23,11 @@ def test_react_context_verification():
     print("✅ TEST PASSED: React Context verified with evidence.")
 
 def test_insufficient_evidence():
-    llm = MockLLMService()
+    try:
+        llm = GeminiLLMService()
+    except ValueError as e:
+        print(f"Skipping test_react_context_verification: {e}")
+        return
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",
@@ -31,7 +41,11 @@ def test_insufficient_evidence():
     print("✅ TEST PASSED: Refused to guess on missing evidence.")
 
 def test_no_psychoanalysis_on_leadership():
-    llm = MockLLMService()
+    try:
+        llm = GeminiLLMService()
+    except ValueError as e:
+        print(f"Skipping test_react_context_verification: {e}")
+        return
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from src.models.schemas import ExtractRequest, ExtractionResult
-from src.services.llm_mock import MockLLMService
+from src.services.llm_service import GeminiLLMService
 
 app = FastAPI(
     title="EIP Evidence Extractor API",
@@ -17,7 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-llm_service = MockLLMService()
+# Servis başlatılırken sistem ortamından API KEY aranacak
+llm_service = GeminiLLMService()
 
 @app.post("/api/v1/extract", response_model=ExtractionResult)
 async def extract_evidence(request: ExtractRequest):

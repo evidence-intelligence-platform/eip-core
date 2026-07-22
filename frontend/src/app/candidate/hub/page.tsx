@@ -6,6 +6,7 @@ import {
   getJobs,
   getApplications,
   analyzeCandidateFile,
+  analyzeCandidateEvidence,
   getCandidateEvidences,
   JobPosting,
   JobApplication,
@@ -28,6 +29,14 @@ export default function CandidateEvidenceHub() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Multi-source booster state in Hub
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [chatgptJsonFile, setChatgptJsonFile] = useState<File | null>(null);
+  const [addingBooster, setAddingBooster] = useState(false);
+  const [boosterSuccess, setBoosterSuccess] = useState<string | null>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
 
   const candidateExtId = `cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : "demo"}`;
 
@@ -95,6 +104,44 @@ export default function CandidateEvidenceHub() {
     }
   };
 
+  const handleAddBooster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkedinUrl && !githubUrl && !chatgptJsonFile) {
+      alert("Lütfen en az bir ek kanıt kaynağı (LinkedIn, GitHub veya ChatGPT JSON) girin.");
+      return;
+    }
+
+    try {
+      setAddingBooster(true);
+      setBoosterSuccess(null);
+
+      if (linkedinUrl.trim()) {
+        await analyzeCandidateEvidence(candidateExtId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`);
+      }
+
+      if (githubUrl.trim()) {
+        await analyzeCandidateEvidence(candidateExtId, "GITHUB_REPO", `GitHub Project Repository: ${githubUrl.trim()}`);
+      }
+
+      if (chatgptJsonFile) {
+        const text = await chatgptJsonFile.text();
+        await analyzeCandidateEvidence(candidateExtId, "CHATGPT_EXPORT", text.slice(0, 4000));
+      }
+
+      setBoosterSuccess("🚀 Ek kanıt kaynaklarınız başarıyla analiz edildi ve kanıt deponuza eklendi!");
+      setLinkedinUrl("");
+      setGithubUrl("");
+      setChatgptJsonFile(null);
+      await fetchData();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
+    } finally {
+      setAddingBooster(false);
+    }
+  };
+
   const getJobTitle = (jobId: number) => {
     const j = jobs.find((job) => job.id === jobId);
     return j ? j.title : `İş İlanı #${jobId}`;
@@ -128,8 +175,9 @@ export default function CandidateEvidenceHub() {
 
       {/* Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left Column: CV Upload & Analysis (3 Cols) */}
+        {/* Left Column: CV Upload & Multi-Source Boosters (3 Cols) */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Main CV Upload Box */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
             <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
               <span className="text-xl">📄</span>
@@ -161,7 +209,7 @@ export default function CandidateEvidenceHub() {
                 </label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-8 border-2 border-dashed border-zinc-700 hover:border-emerald-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition"
+                  className="p-6 border-2 border-dashed border-zinc-700 hover:border-emerald-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition"
                 >
                   <input
                     ref={fileInputRef}
@@ -190,7 +238,7 @@ export default function CandidateEvidenceHub() {
                     className="mt-1 accent-emerald-500 w-4 h-4"
                   />
                   <span className="text-xs text-zinc-300 leading-normal">
-                    <strong className="text-emerald-400">Zero Trust Aday Rızası (Consent Verified):</strong> Özgeçmişimin işveren tarafından Gemini AI ile analiz edilmesine ve yetkinlik kanıtı üretilmesine rıza gösteriyorum.
+                    <strong className="text-emerald-400">Zero Trust Aday Rızası (Consent Verified):</strong> Özgeçmişimin işveren tarafından Gemini AI ile analiz edilmesine rıza gösteriyorum.
                   </span>
                 </label>
               </div>
@@ -201,6 +249,82 @@ export default function CandidateEvidenceHub() {
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-sm transition shadow disabled:opacity-50"
               >
                 {analyzing ? "AI Analizi Yapılıyor..." : "🔍 Özgeçmişimi AI İle Analiz Et"}
+              </button>
+            </form>
+          </div>
+
+          {/* Multi-Source Booster Box */}
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🚀</span>
+                <h2 className="text-lg font-bold text-white">Kanıt Depomu Güçlendir (Çoklu Kaynak)</h2>
+              </div>
+              <span className="text-xs text-blue-400 font-semibold bg-blue-950/60 px-2.5 py-1 rounded-full border border-blue-800">
+                LinkedIn • ChatGPT • GitHub
+              </span>
+            </div>
+
+            {boosterSuccess && (
+              <div className="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs rounded-xl">
+                {boosterSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleAddBooster} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span>🔗</span> LinkedIn Profil Adresi
+                </label>
+                <input
+                  type="url"
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.target.value)}
+                  placeholder="https://linkedin.com/in/aday-profil-adi"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span>🐙</span> GitHub Repo / Proje Adresi
+                </label>
+                <input
+                  type="url"
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  placeholder="https://github.com/kullanici/proje-repo"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span>🤖</span> ChatGPT Sohbet Yedeği (.json)
+                </label>
+                <input
+                  ref={jsonInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && setChatgptJsonFile(e.target.files[0])}
+                />
+                <button
+                  type="button"
+                  onClick={() => jsonInputRef.current?.click()}
+                  className="w-full py-2.5 px-4 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-xl text-sm text-zinc-300 text-left transition flex items-center justify-between"
+                >
+                  <span>{chatgptJsonFile ? `🤖 ${chatgptJsonFile.name}` : "ChatGPT export conversations.json dosyasını seç..."}</span>
+                  <span className="text-xs text-blue-400 font-semibold">Gözat</span>
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={addingBooster}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition shadow disabled:opacity-50"
+              >
+                {addingBooster ? "Kanıtlar İşleniyor..." : "🚀 Ek Kanıtları Depoma Ekle & Skorumu Yükselt"}
               </button>
             </form>
           </div>

@@ -53,6 +53,36 @@ async def lifespan(app: FastAPI):
     yield
 
 
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+
+# OpenAPI Tags Metadata
+tags_metadata = [
+    {
+        "name": "extraction",
+        "description": "Core AI Evidence Extraction endpoints powered by Google Gemini LLM & Consent Gate.",
+    },
+    {
+        "name": "auth",
+        "description": "User registration, PBKDF2 password hashing & HS256 JWT bearer authentication.",
+    },
+    {
+        "name": "job-postings",
+        "description": "Employer job requirements & active postings management.",
+    },
+    {
+        "name": "job-applications",
+        "description": "Candidate application submission & status evaluation (accepted, declined, reviewing).",
+    },
+    {
+        "name": "candidates",
+        "description": "Candidate identity profiles & audit evidence history.",
+    },
+    {
+        "name": "requirements",
+        "description": "Evaluation criteria & requirements definitions.",
+    },
+]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI Application
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,15 +95,50 @@ app = FastAPI(
         "All endpoints require X-Internal-API-Key authentication. "
         "Ref: 04_SYSTEM_ARCHITECTURE.md — Isolated Intelligence Zone."
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
+    docs_url=None,
+    redoc_url=None,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from fastapi.responses import HTMLResponse
+
+# Custom EIP Dark Theme Swagger UI Route
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    response = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} — API Documentation",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+        swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+    )
+    dark_css = """
+        <style>
+            body { background-color: #09090b !important; color: #f4f4f5 !important; font-family: ui-sans-serif, system-ui, sans-serif !important; }
+            .swagger-ui { filter: invert(88%) hue-rotate(180deg); }
+            .swagger-ui .topbar { display: none !important; }
+            .swagger-ui .info { margin: 20px 0 !important; }
+            .swagger-ui .scheme-container { background-color: #18181b !important; box-shadow: none !important; border-radius: 12px !important; }
+        </style>
+    """
+    html_content = response.body.decode("utf-8").replace("</head>", f"{dark_css}</head>")
+    return HTMLResponse(content=html_content)
+
+# Custom ReDoc Route
+@app.get("/redoc", include_in_schema=False)
+async def custom_redoc_html():
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} — ReDoc Documentation",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
+    )
+
 # CORS: Restricted to localhost for development.
-# TODO (Phase 7): Move allowed origins to ALLOWED_ORIGINS environment variable.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],

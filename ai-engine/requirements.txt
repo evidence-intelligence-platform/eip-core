@@ -3,9 +3,10 @@
 # Owner: EIF Architecture Team
 # Audit Fix (2026-07-22): Pinned all versions to prevent silent breaking changes.
 
-# Web Framework
+# Web Framework & Rate Limiting
 fastapi>=0.115.0,<1.0.0
 uvicorn>=0.32.0,<1.0.0
+slowapi>=0.1.9,<1.0.0
 
 # SQLModel ORM & Database Migrations (SQLAlchemy + Pydantic + Alembic)
 sqlmodel>=0.0.22,<1.0.0

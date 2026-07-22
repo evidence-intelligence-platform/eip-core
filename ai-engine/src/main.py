@@ -19,11 +19,15 @@ AUDIT FIXES (2026-07-22):
     before any deployment.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlmodel import Session
 from typing import Annotated
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from src.models.schemas import ExtractRequest, ExtractionResult, EvidencePayload, Requirement as SchemaRequirement
 from src.services.llm_service import GeminiLLMService
@@ -33,6 +37,9 @@ from src.db.models import Candidate, Requirement, Evidence
 from src.routers import candidates, requirements, auth, jobs, applications
 from src.security.auth import verify_api_key
 from src.services.pdf_service import extract_text_from_pdf_bytes
+
+# Initialize Rate Limiter (15 requests/minute per client IP)
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +68,9 @@ app = FastAPI(
     version="1.2.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: Restricted to localhost for development.
 # TODO (Phase 7): Move allowed origins to ALLOWED_ORIGINS environment variable.
@@ -98,8 +108,10 @@ llm_service: BaseLLMService = GeminiLLMService()
     summary="Extract evidence from a raw data payload",
     tags=["extraction"],
 )
+@limiter.limit("15/minute")
 def extract_evidence(
-    request: ExtractRequest,
+    request: Request,
+    extract_req: ExtractRequest,
     session: Session = Depends(get_session),
 ) -> ExtractionResult:
     """
@@ -114,13 +126,13 @@ def extract_evidence(
     - evidence_pointer: Direct reference to the evidence source
     """
     try:
-        result = llm_service.extract_evidence(request)
+        result = llm_service.extract_evidence(extract_req)
 
         # Persist the result for audit trail and future report generation
         db_evidence = Evidence(
-            candidate_external_id=request.payload.candidate_id,
-            requirement_external_id=request.requirement.id,
-            source_type=request.payload.source_type,
+            candidate_external_id=extract_req.payload.candidate_id,
+            requirement_external_id=extract_req.requirement.id,
+            source_type=extract_req.payload.source_type,
             status=result.status,
             reasoning=result.reasoning,
             evidence_pointer=result.evidence_pointer,
@@ -144,7 +156,9 @@ def extract_evidence(
     summary="Extract evidence from an uploaded file (PDF/TXT)",
     tags=["extraction"],
 )
+@limiter.limit("15/minute")
 async def extract_evidence_from_file(
+    request: Request,
     candidate_id: str = Form(..., description="Candidate ID from the Core Zone."),
     requirement_id: str = Form(..., description="Requirement ID to evaluate against."),
     consent_verified: bool = Form(

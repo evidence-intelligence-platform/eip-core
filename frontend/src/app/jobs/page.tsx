@@ -26,7 +26,12 @@ export default function JobListingsPage() {
   const [consentVerified, setConsentVerified] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [submitSuccessData, setSubmitSuccessData] = useState<{
+    appId: number;
+    candidateExtId: string;
+    aiResult?: any;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = async () => {
@@ -56,10 +61,9 @@ export default function JobListingsPage() {
 
   const handleOpenApplyModal = (job: JobPosting) => {
     setSelectedJob(job);
-    setSubmitSuccess(null);
+    setSubmitSuccessData(null);
     setFile(null);
     if (user?.email) {
-      // Set default name from user email
       setCandidateName(user.email.split("@")[0].replace(".", " "));
     }
   };
@@ -87,27 +91,27 @@ export default function JobListingsPage() {
       if (!cand) {
         cand = await createCandidate({
           external_id: extId,
-          name: candidateName || "Aday Kullanıcı",
+          name: candidateName || user?.email?.split("@")[0] || "Aday Kullanıcı",
           consent_granted: true,
         });
       }
 
-      // 2. Submit Job Application to backend
+      // 2. Submit Job Application
       const appRecord = await createApplication({
         candidate_id: cand.id || 1,
         job_id: selectedJob.id!,
         status: "reviewing",
       });
 
-      // 3. Trigger AI Evidence Extraction for the resume PDF
+      // 3. Trigger AI Evidence Extraction for resume PDF
       const reqId = `req_job_${selectedJob.id}`;
       const extractRes = await analyzeCandidateFile(extId, reqId, file);
 
-      if (extractRes.success) {
-        setSubmitSuccess(`✅ Başvurunuz ve Özgeçmişiniz Başarıyla İletildi! (Başvuru ID #${appRecord.id})`);
-      } else {
-        setSubmitSuccess(`✅ Başvurunuz kaydedildi. AI Analiz Notu: ${extractRes.error || "Tamamlandı"}`);
-      }
+      setSubmitSuccessData({
+        appId: appRecord.id!,
+        candidateExtId: extId,
+        aiResult: extractRes.success ? extractRes.data : null,
+      });
 
       await fetchData();
     } catch (err: unknown) {
@@ -200,24 +204,42 @@ export default function JobListingsPage() {
               </button>
             </div>
 
-            {submitSuccess ? (
-              <div className="space-y-6 text-center py-4">
-                <div className="p-4 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-sm rounded-xl font-medium">
-                  {submitSuccess}
+            {submitSuccessData ? (
+              <div className="space-y-5 py-2">
+                <div className="p-4 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-sm rounded-xl space-y-2">
+                  <p className="font-bold text-base flex items-center gap-2">
+                    <span>✅</span> Başvurunuz ve Özgeçmişiniz Alındı! (Başvuru ID #{submitSuccessData.appId})
+                  </p>
+                  <p className="text-xs text-zinc-300">
+                    Başvurunuz işverenin değerlendirme ekranına başarıyla aktarıldı.
+                  </p>
                 </div>
-                <div className="flex justify-center gap-4">
+
+                {submitSuccessData.aiResult && (
+                  <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">🧠 Gemini AI Analiz Durumu:</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900 text-emerald-300">
+                        {submitSuccessData.aiResult.status}
+                      </span>
+                    </div>
+                    <p className="text-zinc-300">{submitSuccessData.aiResult.reasoning}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-center gap-3 pt-2">
                   <Link
-                    href={`/reports/cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : "demo"}`}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow"
+                    href={`/reports/${submitSuccessData.candidateExtId}`}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-2"
                   >
-                    📊 Raporumu & Skorumu Gör &rarr;
+                    <span>📊</span> Raporumu & Skorumu Gör &rarr;
                   </Link>
-                  <button
-                    onClick={() => setSelectedJob(null)}
-                    className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-xs transition"
+                  <Link
+                    href="/candidate/hub"
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-2"
                   >
-                    Kapat
-                  </button>
+                    <span>🎯</span> Aday Paneline Git &rarr;
+                  </Link>
                 </div>
               </div>
             ) : (

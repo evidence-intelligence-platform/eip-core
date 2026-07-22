@@ -255,10 +255,13 @@ async def extract_evidence_from_file(
             select(Requirement).where(Requirement.external_id == requirement_id)
         ).first()
         if not req_db:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Requirement '{requirement_id}' not found in database."
+            req_db = Requirement(
+                external_id=requirement_id,
+                description=f"Technical requirement verification for {requirement_id}"
             )
+            session.add(req_db)
+            session.commit()
+            session.refresh(req_db)
 
         # Parse file content
         content_bytes = await file.read()

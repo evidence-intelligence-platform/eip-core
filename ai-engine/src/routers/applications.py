@@ -1,14 +1,15 @@
 """
 EIF: Job Application Router
 ---
-Version: 1.0.0
+Version: 1.1.0
 Owner: EIF Architecture Team
 Compliance: 05_DATABASE_SCHEMA.md — JOB_APPLICATIONS Entity
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
-from typing import List
+from typing import List, Literal
 from src.db.database import get_session
 from src.db.models import JobApplication, Candidate, JobPosting
 
@@ -16,6 +17,10 @@ router = APIRouter(
     prefix="/api/v1/applications",
     tags=["job-applications"],
 )
+
+
+class ApplicationStatusUpdate(BaseModel):
+    status: Literal["submitted", "reviewing", "accepted", "declined"]
 
 
 @router.get("/", response_model=List[JobApplication], summary="List all job applications")
@@ -41,6 +46,24 @@ def create_application(app_in: JobApplication, session: Session = Depends(get_se
         job_id=app_in.job_id,
         status=app_in.status or "submitted",
     )
+    session.add(application)
+    session.commit()
+    session.refresh(application)
+    return application
+
+
+@router.patch("/{app_id}", response_model=JobApplication, summary="Update job application status")
+def update_application_status(
+    app_id: int,
+    status_update: ApplicationStatusUpdate,
+    session: Session = Depends(get_session),
+) -> JobApplication:
+    """Updates status of a job application (e.g. accepted, declined, reviewing)."""
+    application = session.exec(select(JobApplication).where(JobApplication.id == app_id)).first()
+    if not application:
+        raise HTTPException(status_code=404, detail=f"Application ID {app_id} not found.")
+
+    application.status = status_update.status
     session.add(application)
     session.commit()
     session.refresh(application)

@@ -156,6 +156,16 @@ export async function createApplication(application: Partial<JobApplication>): P
   return res.json();
 }
 
+export async function updateApplicationStatus(appId: number, status: string): Promise<JobApplication> {
+  const res = await fetch(`${API_URL}/api/v1/applications/${appId}`, {
+    method: "PATCH",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error("Failed to update application status");
+  return res.json();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Candidate & Evidence APIs
 // ─────────────────────────────────────────────────────────────────────────────

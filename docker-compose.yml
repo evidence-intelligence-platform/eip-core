@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # ───────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Production Database Container
+  # ───────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: eip_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: eip_db
+      POSTGRES_USER: eip_user
+      POSTGRES_PASSWORD: eip_secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eip_user -d eip_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Isolated Intelligence Zone & Core Zone (FastAPI + SQLModel)
+  # ───────────────────────────────────────────────────────────────────────────
+  ai-engine:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: eip_ai_engine
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://eip_user:eip_secure_password@postgres:5432/eip_db
+      LLM_MODEL_NAME: gemini-2.5-flash
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      INTERNAL_API_KEY: eif-test-internal-api-key
+      JWT_SECRET: eif-super-secret-jwt-key-2026-change-in-production
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Public Zone Frontend (Next.js 15)
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: eip_frontend
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_INTERNAL_API_KEY: eif-test-internal-api-key
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-engine
+
+volumes:
+  postgres_data:

@@ -111,7 +111,7 @@ export default function JobListingsPage() {
     }
 
     if (!consentVerified) {
-      alert("⚠️ Zero Trust Consent Gate Uyarısı: Kanıtlarınızın AI tarafından analiz edilmesi için rıza seçeneğini onaylamalısınız.");
+      alert("⚠️ Zero Trust Consent Gate Uyarısı: Kanıtlarınızın ve yapay zeka çapraz sorgulamasının yapılması için rıza seçeneğini onaylamalısınız.");
       return;
     }
 
@@ -330,6 +330,16 @@ export default function JobListingsPage() {
               </div>
             ) : (
               <form onSubmit={handleApplySubmit} className="space-y-5">
+                {/* Critical AI Cross-Verification Warning Banner */}
+                <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-xl space-y-2 text-xs text-amber-200">
+                  <div className="flex items-center gap-2 font-bold text-amber-400">
+                    <span>⚠️</span> KRİTİK UYARI: YAPAY ZEKA ÇAPRAZ SORGU & VERİ DOĞRULUĞU
+                  </div>
+                  <p className="leading-relaxed text-zinc-300 text-[11px]">
+                    İşveren, bu platform aracılığıyla sunacağınız özgeçmiş, LinkedIn profili ve ChatGPT konuşma geçmişini Gemini AI servisi üzerinden <strong className="text-amber-300">Çapraz Sorgulamaya (AI Cross-Verification)</strong> ve <strong className="text-amber-300">Karakter / Yetkinlik Doğrulamasına</strong> tabi tutar. Verilen tüm bilgilerin doğruluğu titizlikle taranır. Lütfen sadece <strong className="text-white">gerçek ve dürüst verileri</strong> beyan ediniz.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
                     Aday Adı & Soyadı
@@ -454,7 +464,7 @@ export default function JobListingsPage() {
                       className="mt-1 accent-blue-500 w-4 h-4"
                     />
                     <span className="text-xs text-zinc-300 leading-normal">
-                      <strong className="text-blue-400">Zero Trust Aday Rızası (Consent Verified):</strong> Belgelerimin ve eklenen kanıt kaynaklarımın Gemini AI ile analiz edilmesine rıza gösteriyorum.
+                      <strong className="text-blue-400">Zero Trust Aday Rızası & Çapraz Sorgu Onayı:</strong> Sunmuş olduğum tüm belgelerin dürüst ve doğru olduğunu; belgelerimin, LinkedIn/ChatGPT verilerimin işveren adına Yapay Zeka Çapraz Sorgulamasına (AI Cross-Verification) ve Karakter/Yetkinlik Analizine tabi tutulmasını beyan ve kabul ediyorum.
                     </span>
                   </label>
                 </div>

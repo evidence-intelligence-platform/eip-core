@@ -184,6 +184,16 @@ export default function CandidateEvidenceHub() {
         </div>
       )}
 
+      {/* Candidate AI Cross-Verification Warning Banner */}
+      <div className="p-5 bg-amber-950/40 border border-amber-800/80 rounded-2xl space-y-2 text-amber-200 shadow-xl">
+        <div className="flex items-center gap-2 font-bold text-amber-400 text-sm">
+          <span>⚠️</span> YAPAY ZEKA ÇAPRAZ SORGU & VERİ DOĞRULUĞU UYARISI
+        </div>
+        <p className="text-xs text-zinc-300 leading-relaxed">
+          İşverenler bu platform üzerinden yüklediğiniz özgeçmişleri, LinkedIn profillerinizi, sertifikalarınızı ve ChatGPT konuşma geçmişlerinizi <strong className="text-amber-300">Gemini AI Çapraz Sorgulamasına (AI Cross-Verification)</strong> ve <strong className="text-amber-300">Karakter / Doğruluk Analizine</strong> tabi tutmaktadır. Sistemdeki çelişkiler ve tutarsızlıklar yapay zeka tarafından anında tespit edilmektedir. Bu nedenle girdiğiniz bilgilerin tamamen <strong className="text-white font-bold">gerçek ve dürüst</strong> olması önem arz etmektedir.
+        </p>
+      </div>
+
       {/* Candidate Guidance Tip Banner */}
       <div className="p-6 bg-gradient-to-r from-emerald-950/80 via-teal-950/50 to-zinc-900 border border-emerald-800/60 rounded-2xl space-y-3 shadow-xl">
         <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
@@ -390,7 +400,7 @@ export default function CandidateEvidenceHub() {
                     className="mt-1 accent-emerald-500 w-4 h-4"
                   />
                   <span className="text-xs text-zinc-300 leading-normal">
-                    <strong className="text-emerald-400">Zero Trust Aday Rızası (Consent Verified):</strong> Özgeçmişimin işveren tarafından Gemini AI ile analiz edilmesine rıza gösteriyorum.
+                    <strong className="text-emerald-400">Zero Trust Aday Rızası & Çapraz Sorgu Onayı:</strong> Sunmuş olduğum tüm verilerin doğru olduğunu, Gemini AI Çapraz Sorgulamasına ve Karakter/Yetkinlik Analizine tabi tutulmasını rıza ile kabul ediyorum.
                   </span>
                 </label>
               </div>

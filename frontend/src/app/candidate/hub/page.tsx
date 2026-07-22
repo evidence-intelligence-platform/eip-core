@@ -115,7 +115,6 @@ export default function CandidateEvidenceHub() {
       setPublishingAcc(true);
       setAccSuccess(null);
 
-      // Trigger AI Analysis for this accomplishment / case study
       const rawText = `ACCOMPLISHMENT [${accCategory}]: ${accTitle}. Details: ${accContent}. Proof Link: ${accProofLink}`;
       await analyzeCandidateEvidence(candidateExtId, "CASE_STUDY_BLOG", rawText);
 
@@ -131,7 +130,7 @@ export default function CandidateEvidenceHub() {
       };
 
       setAccomplishments((prev) => [newEntry, ...prev]);
-      setAccSuccess("🏆 Başarı Vaka İncelemeniz (Case Study) Gemini AI ile analiz edildi ve portföyünüze yayınlandı!");
+      setAccSuccess("🏆 Başarı Vaka İncelemeniz Gemini AI ile analiz edildi ve portföyünüze eklendi!");
 
       setAccTitle("");
       setAccContent("");
@@ -153,14 +152,14 @@ export default function CandidateEvidenceHub() {
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
-      {/* Header */}
+      {/* Candidate Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Aday Paneli & <span className="text-emerald-400">Kanıt & Başarı Hub&apos;ı</span>
+            🎯 Aday Özel Kariyer & <span className="text-emerald-400">Kanıt Hub&apos;ı</span>
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Evrensel Profesyonel Portföy: <span className="font-semibold text-emerald-400">{user?.email || "Aday Kullanıcı"}</span>
+            Giriş Yapan Aday: <span className="font-semibold text-emerald-400">{user?.email || "Aday Kullanıcı"}</span>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -184,6 +183,27 @@ export default function CandidateEvidenceHub() {
           ❌ {error}
         </div>
       )}
+
+      {/* Candidate Guidance Tip Banner */}
+      <div className="p-6 bg-gradient-to-r from-emerald-950/80 via-teal-950/50 to-zinc-900 border border-emerald-800/60 rounded-2xl space-y-3 shadow-xl">
+        <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+          <span>💡</span> ADAY BAŞARI REHBERİ: SKORUNUZU %90+ YAPIN VE HIZLA İŞE ALININ
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-zinc-300">
+          <div className="p-3 bg-zinc-950/60 rounded-xl border border-emerald-900/40 space-y-1">
+            <strong className="text-white block">1. PDF CV&apos;nizi Yükleyin</strong>
+            <p className="text-zinc-400">Deneyimlerinizi ve yetkinliklerinizi içeren güncel özgeçmişinizi yükleyin ve Zero Trust rızasını onaylayın.</p>
+          </div>
+          <div className="p-3 bg-zinc-950/60 rounded-xl border border-emerald-900/40 space-y-1">
+            <strong className="text-white block">2. Çoklu Kanıt Ekleyin</strong>
+            <p className="text-zinc-400">İş başvurusu yaparken LinkedIn profil URL&apos;nizi, ehliyet/sertifika linkinizi veya ChatGPT export dosyanızı ekleyin.</p>
+          </div>
+          <div className="p-3 bg-zinc-950/60 rounded-xl border border-emerald-900/40 space-y-1">
+            <strong className="text-white block">3. Case Study Yazın</strong>
+            <p className="text-zinc-400">Tamamladığınız önemli ameliyatları, sürüş deneyimlerinizi veya projelerinizi vaka incelemesi olarak yayınlayın.</p>
+          </div>
+        </div>
+      </div>
 
       {/* Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -274,7 +294,7 @@ export default function CandidateEvidenceHub() {
                 disabled={publishingAcc}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50"
               >
-                {publishingAcc ? "AI Analizi ve Yayınlama Yapılıyor..." : "🏆 Başarı Vakasını AI İle Doğrula & Portföye Ekle"}
+                {publishingAcc ? "AI Analizi Yapılıyor..." : "🏆 Başarı Vakasını AI İle Doğrula & Portföye Ekle"}
               </button>
             </form>
           </div>
@@ -391,7 +411,7 @@ export default function CandidateEvidenceHub() {
           {/* Applications Status Card */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 shadow-lg">
             <h2 className="text-lg font-bold text-white flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span>📌 Başvurularım</span>
+              <span>📌 Başvurularımın Durumu</span>
               <span className="text-xs bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-full font-mono">
                 {applications.length} Başvuru
               </span>
@@ -412,7 +432,7 @@ export default function CandidateEvidenceHub() {
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                 {applications.map((app) => (
-                  <div key={app.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
+                  <div key={app.id} className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1.5">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-white">{getJobTitle(app.job_id)}</p>
                       <span
@@ -427,7 +447,7 @@ export default function CandidateEvidenceHub() {
                         {app.status === "accepted" ? "Kabul Edildi ✅" : app.status === "declined" ? "Reddedildi ❌" : "Değerlendiriliyor ⏳"}
                       </span>
                     </div>
-                    <p className="text-[10px] text-zinc-500">Başvuru ID: #{app.id}</p>
+                    <p className="text-[10px] text-zinc-500">Başvuru Takip ID: #{app.id}</p>
                   </div>
                 ))}
               </div>

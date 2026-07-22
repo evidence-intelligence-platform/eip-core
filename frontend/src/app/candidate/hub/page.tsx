@@ -1,530 +1,297 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
-  getCandidates,
-  getRequirements,
+  getJobs,
+  getApplications,
   analyzeCandidateFile,
-  Candidate,
-  Requirement,
+  getCandidateEvidences,
+  JobPosting,
+  JobApplication,
+  Evidence,
 } from "@/lib/api";
-
-type AnalysisStatus = "idle" | "loading" | "success" | "error";
-
-interface AnalysisResult {
-  status: string;
-  reasoning: string;
-  evidence_pointer?: string;
-}
+import { useAuth } from "@/context/AuthContext";
 
 export default function CandidateEvidenceHub() {
-  // Data
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const { user } = useAuth();
+  const [jobs, setJobs] = useState<JobPosting[]>([]);
+  const [applications, setApplications] = useState<JobApplication[]>([]);
+  const [evidences, setEvidences] = useState<Evidence[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
-  const [selectedRequirementIds, setSelectedRequirementIds] = useState<string[]>([]);
+  // Resume Upload state
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [consentVerified, setConsentVerified] = useState(true);
   const [file, setFile] = useState<File | null>(null);
-
-  // UI state
-  const [isDragging, setIsDragging] = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
-  const [results, setResults] = useState<{ requirementId: string; result: AnalysisResult | null; error: string | null }[]>([]);
-  const [dataError, setDataError] = useState<string | null>(null);
-
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch candidates and requirements on mount
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [cands, reqs] = await Promise.all([getCandidates(), getRequirements()]);
-        setCandidates(cands);
-        setRequirements(reqs);
-      } catch {
-        setDataError("Veriler yüklenemedi. Backend'in çalıştığından emin olun.");
+  const candidateExtId = `cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : "demo"}`;
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [jobsData, appsData, evData] = await Promise.all([
+        getJobs().catch(() => []),
+        getApplications().catch(() => []),
+        getCandidateEvidences(candidateExtId).catch(() => []),
+      ]);
+      setJobs(jobsData);
+      setApplications(appsData);
+      setEvidences(evData);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Veriler yüklenemedi.");
       }
+    } finally {
+      setLoading(false);
     }
-    loadData();
-  }, []);
+  };
 
-  // Drag & Drop handlers
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped && (dropped.type === "application/pdf" || dropped.name.endsWith(".txt"))) {
-      setFile(dropped);
-    }
-  }, []);
+  useEffect(() => {
+    fetchData();
+  }, [user]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) setFile(selected);
   };
 
-  const toggleRequirement = (reqId: string) => {
-    setSelectedRequirementIds((prev) =>
-      prev.includes(reqId) ? prev.filter((id) => id !== reqId) : [...prev, reqId]
-    );
-  };
+  const handleAnalyze = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) return;
 
-  const canSubmit =
-    selectedCandidateId &&
-    selectedRequirementIds.length > 0 &&
-    file &&
-    analysisStatus !== "loading";
-
-  const handleAnalyze = async () => {
-    if (!canSubmit) return;
-
-    setAnalysisStatus("loading");
-    setResults([]);
-
-    // Analyze for each selected requirement sequentially
-    const analysisResults: typeof results = [];
-    for (const reqId of selectedRequirementIds) {
-      const res = await analyzeCandidateFile(selectedCandidateId, reqId, file!);
-      if (res.success) {
-        analysisResults.push({ requirementId: reqId, result: res.data, error: null });
-      } else {
-        analysisResults.push({ requirementId: reqId, result: null, error: res.error || "Bilinmeyen hata" });
-      }
+    if (!consentVerified) {
+      alert("⚠️ Zero Trust Consent Gate Uyarısı: Özgeçmişinizin AI tarafından analiz edilmesi için rıza seçeneğini onaylamalısınız.");
+      return;
     }
 
-    setResults(analysisResults);
-    const hasError = analysisResults.some((r) => r.error !== null);
-    setAnalysisStatus(hasError && analysisResults.every((r) => r.error !== null) ? "error" : "success");
+    try {
+      setAnalyzing(true);
+      setAnalysisResult(null);
+
+      const reqId = selectedJobId ? `req_job_${selectedJobId}` : "req_general_cv";
+      const res = await analyzeCandidateFile(candidateExtId, reqId, file);
+
+      if (res.success) {
+        setAnalysisResult(res.data);
+      } else {
+        setError(`AI Analiz Hatası: ${res.error}`);
+      }
+
+      await fetchData();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
-  const statusColor = (status: string) => {
-    if (status === "VERIFIED") return "text-emerald-400";
-    if (status === "INSUFFICIENT_EVIDENCE") return "text-amber-400";
-    if (status === "CONTRADICTION") return "text-red-400";
-    return "text-slate-400";
+  const getJobTitle = (jobId: number) => {
+    const j = jobs.find((job) => job.id === jobId);
+    return j ? j.title : `İş İlanı #${jobId}`;
   };
-
-  const statusBg = (status: string) => {
-    if (status === "VERIFIED") return "border-emerald-500/40 bg-emerald-500/10";
-    if (status === "INSUFFICIENT_EVIDENCE") return "border-amber-500/40 bg-amber-500/10";
-    if (status === "CONTRADICTION") return "border-red-500/40 bg-red-500/10";
-    return "border-slate-700 bg-slate-800";
-  };
-
-  const statusIcon = (status: string) => {
-    if (status === "VERIFIED") return "✓";
-    if (status === "INSUFFICIENT_EVIDENCE") return "⚠";
-    if (status === "CONTRADICTION") return "✗";
-    return "?";
-  };
-
-  const getRequirementDesc = (id: string) =>
-    requirements.find((r) => r.external_id === id)?.description || id;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--background)" }}>
+    <div className="space-y-8 max-w-5xl mx-auto py-8 px-4">
       {/* Header */}
-      <div
-        style={{ borderBottom: "1px solid var(--border-color)" }}
-        className="px-8 py-4 flex justify-between items-center"
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-            style={{ background: "var(--primary)" }}
-          >
-            E
-          </div>
-          <span className="font-semibold" style={{ color: "var(--foreground)" }}>
-            EIP Candidate Hub
-          </span>
-        </div>
-        <div className="flex gap-6 text-sm" style={{ color: "var(--border-color)" }}>
-          <span className="cursor-pointer hover:text-white transition-colors">My Profile</span>
-          <span className="cursor-pointer hover:text-white transition-colors">Career Analysis</span>
-          <span className="cursor-pointer hover:text-white transition-colors">Data Hub</span>
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        {/* Hero */}
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: "var(--foreground)" }}>
-            Your{" "}
-            <span style={{ color: "var(--primary)" }}>Evidence Vault</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
+        <div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">
+            Aday Paneli & <span className="text-emerald-400">Kanıt Hub&apos;ı</span>
           </h1>
-          <p className="text-base italic" style={{ color: "var(--border-color)" }}>
-            &ldquo;We do not evaluate you. We evaluate the evidence you choose to share.&rdquo;
+          <p className="text-zinc-400 text-sm mt-1">
+            Giriş Yapan Aday: <span className="font-semibold text-emerald-400">{user?.email || "Aday Kullanıcı"}</span>
           </p>
         </div>
+        <Link
+          href="/jobs"
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition shadow flex items-center justify-center gap-2"
+        >
+          <span>💼</span> Tüm İş İlanlarını İncele &rarr;
+        </Link>
+      </div>
 
-        {dataError && (
-          <div
-            className="mb-6 px-5 py-4 rounded-xl text-sm border"
-            style={{ borderColor: "#ef4444", background: "rgba(239,68,68,0.08)", color: "#fca5a5" }}
-          >
-            ⚠ {dataError}
-          </div>
-        )}
+      {error && (
+        <div className="p-4 bg-red-950/40 border border-red-800 text-red-300 text-sm rounded-xl">
+          ❌ {error}
+        </div>
+      )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* ── Left panel: Form ── */}
-          <div className="lg:col-span-3 flex flex-col gap-5">
+      {/* Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Left Column: CV Upload & Analysis (3 Cols) */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+            <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+              <span className="text-xl">📄</span>
+              <h2 className="text-lg font-bold text-white">Özgeçmiş Yükle & AI Yetkinlik Analizi</h2>
+            </div>
 
-            {/* Step 1: Candidate */}
-            <div
-              className="rounded-2xl p-6 border"
-              style={{ background: "var(--surface)", borderColor: "var(--border-color)" }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background: "var(--primary)" }}
-                >
-                  1
-                </span>
-                <h2 className="font-semibold" style={{ color: "var(--foreground)" }}>
-                  Aday Seçin
-                </h2>
-              </div>
-
-              {candidates.length === 0 && !dataError ? (
-                <p className="text-sm" style={{ color: "var(--border-color)" }}>
-                  Yükleniyor...
-                </p>
-              ) : (
+            <form onSubmit={handleAnalyze} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                  Hedef Pozisyon / İlan (Opsiyonel)
+                </label>
                 <select
-                  value={selectedCandidateId}
-                  onChange={(e) => setSelectedCandidateId(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
-                  style={{
-                    background: "var(--background)",
-                    border: `1px solid ${selectedCandidateId ? "var(--primary)" : "var(--border-color)"}`,
-                    color: "var(--foreground)",
-                  }}
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 transition"
                 >
-                  <option value="">— Aday Seçin —</option>
-                  {candidates.map((c) => (
-                    <option key={c.external_id} value={c.external_id}>
-                      {c.name} ({c.external_id})
+                  <option value="">— Genel Özgeçmiş Değerlendirmesi —</option>
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title} (İlan #{j.id})
                     </option>
                   ))}
                 </select>
-              )}
-            </div>
+              </div>
 
-            {/* Step 2: Requirements */}
-            <div
-              className="rounded-2xl p-6 border"
-              style={{ background: "var(--surface)", borderColor: "var(--border-color)" }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background: "var(--primary)" }}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                  PDF / TXT Özgeçmiş Dosyası
+                </label>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-8 border-2 border-dashed border-zinc-700 hover:border-emerald-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition"
                 >
-                  2
-                </span>
-                <h2 className="font-semibold" style={{ color: "var(--foreground)" }}>
-                  Gereksinim(ler) Seçin
-                </h2>
-                <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--background)", color: "var(--border-color)" }}>
-                  Çoklu seçim
-                </span>
-              </div>
-
-              {requirements.length === 0 && !dataError ? (
-                <p className="text-sm" style={{ color: "var(--border-color)" }}>
-                  Yükleniyor...
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
-                  {requirements.map((req) => {
-                    const selected = selectedRequirementIds.includes(req.external_id);
-                    return (
-                      <label
-                        key={req.external_id}
-                        className="flex items-start gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all"
-                        style={{
-                          background: selected ? "rgba(37,99,235,0.12)" : "var(--background)",
-                          border: `1px solid ${selected ? "var(--primary)" : "var(--border-color)"}`,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => toggleRequirement(req.external_id)}
-                          className="mt-0.5 accent-blue-500"
-                        />
-                        <div>
-                          <p className="text-xs font-mono mb-0.5" style={{ color: "var(--primary)" }}>
-                            {req.external_id}
-                          </p>
-                          <p className="text-sm" style={{ color: "var(--foreground)" }}>
-                            {req.description}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Step 3: File Upload */}
-            <div
-              className="rounded-2xl p-6 border"
-              style={{ background: "var(--surface)", borderColor: "var(--border-color)" }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background: "var(--primary)" }}
-                >
-                  3
-                </span>
-                <h2 className="font-semibold" style={{ color: "var(--foreground)" }}>
-                  Dosya Yükle
-                </h2>
-                <span className="ml-auto text-xs" style={{ color: "var(--border-color)" }}>
-                  PDF veya TXT
-                </span>
-              </div>
-
-              {/* Drop zone */}
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="relative flex flex-col items-center justify-center gap-3 py-10 rounded-xl cursor-pointer transition-all duration-200"
-                style={{
-                  border: `2px dashed ${isDragging ? "var(--primary)" : file ? "#10b981" : "var(--border-color)"}`,
-                  background: isDragging
-                    ? "rgba(37,99,235,0.08)"
-                    : file
-                    ? "rgba(16,185,129,0.06)"
-                    : "var(--background)",
-                }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.txt"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-
-                {file ? (
-                  <>
-                    <div className="text-4xl">📄</div>
-                    <div className="text-center">
-                      <p className="font-semibold text-sm" style={{ color: "#10b981" }}>
-                        {file.name}
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--border-color)" }}>
-                        {(file.size / 1024).toFixed(1)} KB — Değiştirmek için tıklayın
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-4xl select-none">📂</div>
-                    <div className="text-center">
-                      <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-                        Sürükle & bırak veya{" "}
-                        <span style={{ color: "var(--primary)" }}>tıklayarak seç</span>
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--border-color)" }}>
-                        Desteklenen: .pdf, .txt
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              onClick={handleAnalyze}
-              disabled={!canSubmit}
-              className="w-full py-4 rounded-2xl font-semibold text-white transition-all duration-200 relative overflow-hidden"
-              style={{
-                background: canSubmit
-                  ? "var(--primary)"
-                  : "var(--surface)",
-                border: `1px solid ${canSubmit ? "var(--primary)" : "var(--border-color)"}`,
-                color: canSubmit ? "white" : "var(--border-color)",
-                cursor: canSubmit ? "pointer" : "not-allowed",
-                opacity: canSubmit ? 1 : 0.6,
-              }}
-            >
-              {analysisStatus === "loading" ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  AI Analiz Ediyor... ({selectedRequirementIds.length} gereksinim)
-                </span>
-              ) : (
-                `🔍 Analizi Başlat${selectedRequirementIds.length > 0 ? ` (${selectedRequirementIds.length} gereksinim)` : ""}`
-              )}
-            </button>
-          </div>
-
-          {/* ── Right panel: Results ── */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
-            <div
-              className="rounded-2xl p-5 border h-full"
-              style={{ background: "var(--surface)", borderColor: "var(--border-color)", minHeight: "400px" }}
-            >
-              <h2 className="font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--foreground)" }}>
-                <span>🧠</span> AI Sonuçları
-              </h2>
-
-              {analysisStatus === "idle" && (
-                <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
-                  <div className="text-5xl opacity-30">🔬</div>
-                  <p className="text-sm" style={{ color: "var(--border-color)" }}>
-                    Aday, gereksinim ve dosya seçip analizi başlatın
-                  </p>
-                </div>
-              )}
-
-              {analysisStatus === "loading" && (
-                <div className="flex flex-col items-center justify-center h-64 text-center gap-4">
-                  <div className="relative w-16 h-16">
-                    <div
-                      className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
-                      style={{ borderColor: `var(--primary) transparent transparent transparent` }}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-                      Analiz Ediliyor...
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.txt"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  {file ? (
+                    <p className="text-emerald-400 text-sm font-semibold">📄 {file.name} ({(file.size / 1024).toFixed(1)} KB)</p>
+                  ) : (
+                    <p className="text-zinc-400 text-xs">
+                      CV dosyanızı seçmek için <span className="text-emerald-400 underline">tıklayın</span> (.pdf veya .txt)
                     </p>
-                    <p className="text-xs mt-1" style={{ color: "var(--border-color)" }}>
-                      Gemini AI dosyanızı inceliyor
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {(analysisStatus === "success" || analysisStatus === "error") && results.length > 0 && (
-                <div className="flex flex-col gap-4 overflow-y-auto max-h-[600px] pr-1">
-                  {results.map(({ requirementId, result, error }) => (
-                    <div
-                      key={requirementId}
-                      className="rounded-xl p-4 border"
-                      style={
-                        result
-                          ? {
-                              borderColor: statusBg(result.status).split(" ")[0].replace("border-", ""),
-                              background: statusBg(result.status).split(" ")[1].replace("bg-", ""),
-                            }
-                          : { borderColor: "#ef4444", background: "rgba(239,68,68,0.08)" }
-                      }
-                    >
-                      {result ? (
-                        <>
-                          {/* Status badge */}
-                          <div className="flex items-center justify-between mb-3">
-                            <span
-                              className="text-xs font-mono px-2 py-1 rounded-lg"
-                              style={{ background: "var(--background)", color: "var(--border-color)" }}
-                            >
-                              {requirementId}
-                            </span>
-                            <span
-                              className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${statusColor(result.status)}`}
-                              style={{ background: "var(--background)" }}
-                            >
-                              {statusIcon(result.status)} {result.status}
-                            </span>
-                          </div>
-
-                          {/* Requirement description */}
-                          <p className="text-xs mb-3 italic" style={{ color: "var(--border-color)" }}>
-                            {getRequirementDesc(requirementId)}
-                          </p>
-
-                          {/* Reasoning */}
-                          <div className="mb-2">
-                            <p className="text-xs font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-                              Gerekçe
-                            </p>
-                            <p className="text-xs leading-relaxed" style={{ color: "var(--border-color)" }}>
-                              {result.reasoning}
-                            </p>
-                          </div>
-
-                          {/* Evidence pointer */}
-                          {result.evidence_pointer && (
-                            <div
-                              className="mt-3 px-3 py-2 rounded-lg text-xs font-mono"
-                              style={{ background: "var(--background)", color: "#10b981", borderLeft: "3px solid #10b981" }}
-                            >
-                              &ldquo;{result.evidence_pointer}&rdquo;
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div>
-                          <p className="text-xs font-mono mb-1" style={{ color: "var(--border-color)" }}>
-                            {requirementId}
-                          </p>
-                          <p className="text-xs" style={{ color: "#fca5a5" }}>
-                            ✗ {error}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  
-                  {selectedCandidateId && (
-                    <div className="pt-3 border-t border-zinc-800 flex justify-center">
-                      <a
-                        href={`/reports/${selectedCandidateId}`}
-                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs text-center transition shadow inline-block"
-                      >
-                        📊 View Full Explainability Report &rarr;
-                      </a>
-                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Info card */}
-            <div
-              className="rounded-2xl p-4 border text-xs"
-              style={{ background: "var(--surface)", borderColor: "var(--border-color)", color: "var(--border-color)" }}
-            >
-              <p className="font-semibold mb-2" style={{ color: "var(--foreground)" }}>
-                ℹ Nasıl Çalışır?
-              </p>
-              <ul className="space-y-1.5 list-none">
-                <li>📄 PDF veya TXT formatında CV yükleyin</li>
-                <li>✅ Birden fazla gereksinim seçebilirsiniz</li>
-                <li>🤖 Gemini AI her gereksinim için ayrı analiz yapar</li>
-                <li>🔒 Sonuçlar veritabanına kaydedilir</li>
-              </ul>
+              {/* Consent Gate Checkbox */}
+              <div className="p-4 bg-emerald-950/30 border border-emerald-800/50 rounded-xl space-y-2">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentVerified}
+                    onChange={(e) => setConsentVerified(e.target.checked)}
+                    className="mt-1 accent-emerald-500 w-4 h-4"
+                  />
+                  <span className="text-xs text-zinc-300 leading-normal">
+                    <strong className="text-emerald-400">Zero Trust Aday Rızası (Consent Verified):</strong> Özgeçmişimin işveren tarafından Gemini AI ile analiz edilmesine ve yetkinlik kanıtı üretilmesine rıza gösteriyorum.
+                  </span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={analyzing || !file}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-sm transition shadow disabled:opacity-50"
+              >
+                {analyzing ? "AI Analizi Yapılıyor..." : "🔍 Özgeçmişimi AI İle Analiz Et"}
+              </button>
+            </form>
+          </div>
+
+          {/* AI Analysis Result Display */}
+          {analysisResult && (
+            <div className="bg-zinc-900 border border-emerald-800 p-6 rounded-2xl space-y-4 bg-emerald-950/20 shadow-xl">
+              <div className="flex items-center justify-between border-b border-emerald-800/60 pb-3">
+                <h3 className="font-bold text-emerald-400 text-base">🧠 Gemini AI Analiz Sonucu</h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-900 text-emerald-300 border border-emerald-700">
+                  {analysisResult.status}
+                </span>
+              </div>
+              <p className="text-sm text-zinc-300 leading-relaxed">{analysisResult.reasoning}</p>
+              {analysisResult.evidence_pointer && (
+                <div className="p-3 bg-zinc-950 border-l-4 border-emerald-500 text-xs font-mono text-emerald-400 rounded-r-lg">
+                  &ldquo;{analysisResult.evidence_pointer}&rdquo;
+                </div>
+              )}
+              <div className="pt-2">
+                <Link
+                  href={`/reports/${candidateExtId}`}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl text-center block transition shadow"
+                >
+                  📊 Detaylı Kanıt & Açıklanabilirlik Raporunu Gör &rarr;
+                </Link>
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* Right Column: Active Applications & Saved Evidences (2 Cols) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Applications Status Card */}
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 shadow-lg">
+            <h2 className="text-lg font-bold text-white flex items-center justify-between border-b border-zinc-800 pb-3">
+              <span>📌 Başvurularım</span>
+              <span className="text-xs bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-full font-mono">
+                {applications.length} Başvuru
+              </span>
+            </h2>
+
+            {loading ? (
+              <p className="text-xs text-zinc-400">Yükleniyor...</p>
+            ) : applications.length === 0 ? (
+              <div className="text-center py-6 space-y-3">
+                <p className="text-xs text-zinc-400">Henüz hiçbir iş ilanına başvurmadınız.</p>
+                <Link
+                  href="/jobs"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg inline-block transition"
+                >
+                  İlanlara Göz At &rarr;
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {applications.map((app) => (
+                  <div key={app.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-white">{getJobTitle(app.job_id)}</p>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                          app.status === "accepted"
+                            ? "bg-emerald-950/60 text-emerald-400 border-emerald-800"
+                            : app.status === "declined"
+                            ? "bg-red-950/60 text-red-400 border-red-800"
+                            : "bg-amber-950/60 text-amber-400 border-amber-800"
+                        }`}
+                      >
+                        {app.status === "accepted" ? "Kabul Edildi ✅" : app.status === "declined" ? "Reddedildi ❌" : "Değerlendiriliyor ⏳"}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">Başvuru ID: #{app.id}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Evidence Stats Card */}
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-3 shadow-lg">
+            <h3 className="text-sm font-bold text-white">📊 Doğrulanmış AI Kanıtlarım</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Veritabanında sizin için kayıtlı toplam <strong className="text-emerald-400">{evidences.length} adet</strong> yetkinlik kanıtı bulunmaktadır.
+            </p>
+            <Link
+              href={`/reports/${candidateExtId}`}
+              className="text-xs text-blue-400 hover:underline font-semibold block pt-1"
+            >
+              Tam Raporu İncele &rarr;
+            </Link>
           </div>
         </div>
       </div>

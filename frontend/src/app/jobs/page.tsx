@@ -11,8 +11,19 @@ import {
   analyzeCandidateEvidence,
   JobPosting,
   Candidate,
+  ProfessionCategory,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+
+const CATEGORIES: { key: ProfessionCategory; label: string; icon: string }[] = [
+  { key: "ALL", label: "Tüm Sektörler & Meslekler", icon: "🌐" },
+  { key: "HEALTHCARE", label: "Sağlık & Tıp (Doktor, Hemşire)", icon: "🩺" },
+  { key: "TECHNOLOGY", label: "Teknoloji & Yapay Zeka", icon: "🤖" },
+  { key: "TRANSPORTATION", label: "Ulaşım & Lojistik (Şoför, Kurye)", icon: "🚗" },
+  { key: "SERVICES", label: "Ev Hizmetleri & Bakım", icon: "🧹" },
+  { key: "GASTRONOMY", label: "Gastronomi & Mutfak (Şef)", icon: "🍳" },
+  { key: "CONSTRUCTION", label: "İnşaat & Mimarlık", icon: "🏗️" },
+];
 
 export default function JobListingsPage() {
   const { user } = useAuth();
@@ -20,6 +31,9 @@ export default function JobListingsPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Category Filter
+  const [selectedCategory, setSelectedCategory] = useState<ProfessionCategory>("ALL");
 
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -31,6 +45,7 @@ export default function JobListingsPage() {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [chatgptJsonFile, setChatgptJsonFile] = useState<File | null>(null);
+  const [certificateLink, setCertificateLink] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccessData, setSubmitSuccessData] = useState<{
@@ -68,6 +83,11 @@ export default function JobListingsPage() {
     fetchData();
   }, []);
 
+  const filteredJobs = jobs.filter((j) => {
+    if (selectedCategory === "ALL") return true;
+    return j.category === selectedCategory || j.title.toLowerCase().includes(selectedCategory.toLowerCase());
+  });
+
   const handleOpenApplyModal = (job: JobPosting) => {
     setSelectedJob(job);
     setSubmitSuccessData(null);
@@ -75,6 +95,7 @@ export default function JobListingsPage() {
     setLinkedinUrl("");
     setGithubUrl("");
     setChatgptJsonFile(null);
+    setCertificateLink("");
     if (user?.email) {
       setCandidateName(user.email.split("@")[0].replace(".", " "));
     }
@@ -84,8 +105,8 @@ export default function JobListingsPage() {
     e.preventDefault();
     if (!selectedJob) return;
 
-    if (!resumeFile && !linkedinUrl && !githubUrl && !chatgptJsonFile) {
-      alert("⚠️ Lütfen başvuruyu tamamlamak için en az bir kanıt kaynağı (PDF CV, LinkedIn adresi veya ChatGPT JSON) ekleyin.");
+    if (!resumeFile && !linkedinUrl && !githubUrl && !chatgptJsonFile && !certificateLink) {
+      alert("⚠️ Lütfen başvuruyu tamamlamak için en az bir kanıt belgesi (CV, Sertifika, Ehliyet/Belge veya Bağlantı) ekleyin.");
       return;
     }
 
@@ -119,26 +140,32 @@ export default function JobListingsPage() {
       const reqId = `req_job_${selectedJob.id}`;
       let primaryAiResult = null;
 
-      // 3. Process PDF/TXT Resume if provided
+      // 3. Process PDF/TXT Resume
       if (resumeFile) {
         const extractRes = await analyzeCandidateFile(extId, reqId, resumeFile);
         if (extractRes.success) primaryAiResult = extractRes.data;
         extraSources++;
       }
 
-      // 4. Process LinkedIn URL Booster if provided
+      // 4. Process LinkedIn URL
       if (linkedinUrl.trim()) {
         await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`);
         extraSources++;
       }
 
-      // 5. Process GitHub Repo Booster if provided
+      // 5. Process GitHub / Portfolio Link
       if (githubUrl.trim()) {
-        await analyzeCandidateEvidence(extId, "GITHUB_REPO", `GitHub Project Repository: ${githubUrl.trim()}`);
+        await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`);
         extraSources++;
       }
 
-      // 6. Process ChatGPT Export JSON File if provided
+      // 6. Process Certificate / License Link
+      if (certificateLink.trim()) {
+        await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`);
+        extraSources++;
+      }
+
+      // 7. Process ChatGPT Export JSON
       if (chatgptJsonFile) {
         const text = await chatgptJsonFile.text();
         await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000));
@@ -163,15 +190,35 @@ export default function JobListingsPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto py-8 px-4">
+    <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
       {/* Header */}
       <div className="text-center space-y-3 border-b border-zinc-800 pb-8">
         <h1 className="text-4xl font-extrabold text-white tracking-tight">
-          Açık <span className="text-blue-500">İş İlanları</span> & Çoklu Kanıt Portalı
+          Evrensel Meslek İlanları & <span className="text-blue-500">Kanıt Portalı</span>
         </h1>
-        <p className="text-zinc-400 text-sm max-w-2xl mx-auto">
-          İş ilanlarını inceleyin; PDF CV, LinkedIn URL, ChatGPT sohbet JSON yedeği ve GitHub projelerinizi ekleyerek başvurunuzu güçlendirin.
+        <p className="text-zinc-400 text-sm max-w-3xl mx-auto">
+          Tüm meslek gruplarından (Tıp, Yapay Zeka, Şoförlük, Hizmet Sektörü, Gastronomi, Mimarlık) açık pozisyonlar. Kanıtlarınızı ekleyin ve doğrulanmış skorunuzla başvurun.
         </p>
+      </div>
+
+      {/* Sector Category Filters */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {CATEGORIES.map((cat) => {
+          const active = selectedCategory === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => setSelectedCategory(cat.key)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 ${
+                active
+                  ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+              }`}
+            >
+              <span>{cat.icon}</span> {cat.label}
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -185,14 +232,14 @@ export default function JobListingsPage() {
         <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl text-zinc-400 text-sm">
           İş ilanları yükleniyor...
         </div>
-      ) : jobs.length === 0 ? (
+      ) : filteredJobs.length === 0 ? (
         <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl space-y-3">
-          <p className="text-zinc-400 text-base">Henüz aktif bir iş ilanı yayınlanmadı.</p>
-          <p className="text-xs text-zinc-500">İşverenler yeni ilanlar ekledikçe burada listelenecektir.</p>
+          <p className="text-zinc-400 text-base">Bu kategoride henüz aktif bir iş ilanı yayınlanmadı.</p>
+          <p className="text-xs text-zinc-500">Farklı bir meslek kategorisi seçerek arama yapabilirsiniz.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <div
               key={job.id}
               className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 hover:border-zinc-700 transition shadow-lg"
@@ -206,7 +253,7 @@ export default function JobListingsPage() {
                     </span>
                   </div>
                   <p className="text-xs text-blue-400 font-semibold mt-1">
-                    🏢 {job.company_name || "Acme Corp"} • İlan ID: #{job.id}
+                    🏢 {job.company_name || "EIP Partner Kurum"} • İlan ID: #{job.id}
                   </p>
                 </div>
 
@@ -250,7 +297,7 @@ export default function JobListingsPage() {
                     <span>✅</span> Başvurunuz {submitSuccessData.extraSourcesCount} Kanıt Kaynağı İle Alındı! (Başvuru ID #{submitSuccessData.appId})
                   </p>
                   <p className="text-xs text-zinc-300">
-                    Özgeçmişiniz ve eklenen kanıt kaynaklarınız (LinkedIn / ChatGPT JSON / GitHub) işverenin değerlendirme ekranına aktarıldı.
+                    Belgeleriniz ve eklenen tüm mesleki kanıtlarınız işverenin değerlendirme ekranına aktarıldı.
                   </p>
                 </div>
 
@@ -300,7 +347,7 @@ export default function JobListingsPage() {
                 {/* Main Resume Upload */}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-                    📄 Ana Özgeçmiş Dosyası (PDF veya TXT)
+                    📄 Özgeçmiş / CV / Belge Dosyası (PDF veya TXT)
                   </label>
                   <div
                     onClick={() => resumeInputRef.current?.click()}
@@ -317,17 +364,17 @@ export default function JobListingsPage() {
                       <p className="text-emerald-400 text-sm font-semibold">📄 {resumeFile.name} ({(resumeFile.size / 1024).toFixed(1)} KB)</p>
                     ) : (
                       <p className="text-zinc-400 text-xs">
-                        Özgeçmişinizi seçmek için <span className="text-blue-400 underline">tıklayın</span> (.pdf veya .txt)
+                        Dosyanızı seçmek için <span className="text-blue-400 underline">tıklayın</span> (.pdf veya .txt)
                       </p>
                     )}
                   </div>
                 </div>
 
-                {/* Evidence Boosters Accordion/Inputs */}
+                {/* Multi-Industry Evidence Boosters */}
                 <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-4">
                   <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      🚀 Başvuruyu Güçlendirici Ek Kanıtlar (İsteğe Bağlı)
+                      🚀 Başvuruyu Güçlendirici Mesleki Kanıtlar (İsteğe Bağlı)
                     </span>
                     <span className="text-[10px] text-emerald-400 font-mono">+ Skor Bonusu</span>
                   </div>
@@ -335,7 +382,7 @@ export default function JobListingsPage() {
                   {/* LinkedIn URL Input */}
                   <div>
                     <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>🔗</span> LinkedIn Profil Bağlantısı
+                      <span>🔗</span> LinkedIn / Profesyonel Profil Bağlantısı
                     </label>
                     <input
                       type="url"
@@ -346,16 +393,30 @@ export default function JobListingsPage() {
                     />
                   </div>
 
-                  {/* GitHub Repo Input */}
+                  {/* Certificate / Driver License Link */}
                   <div>
                     <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>🐙</span> GitHub Proje / Repo Bağlantısı
+                      <span>📜</span> Sertifika / Ehliyet / Mesleki Belge Bağlantısı
+                    </label>
+                    <input
+                      type="url"
+                      value={certificateLink}
+                      onChange={(e) => setCertificateLink(e.target.value)}
+                      placeholder="https://drive.google.com/sertifikam-ehliyetim"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                    />
+                  </div>
+
+                  {/* GitHub / Portfolio Link */}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
+                      <span>🌐</span> Portföy / Proje / GitHub Bağlantısı
                     </label>
                     <input
                       type="url"
                       value={githubUrl}
                       onChange={(e) => setGithubUrl(e.target.value)}
-                      placeholder="https://github.com/kullanici/proje-repo"
+                      placeholder="https://portfoyum.com veya https://github.com/proje"
                       className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
@@ -393,7 +454,7 @@ export default function JobListingsPage() {
                       className="mt-1 accent-blue-500 w-4 h-4"
                     />
                     <span className="text-xs text-zinc-300 leading-normal">
-                      <strong className="text-blue-400">Zero Trust Aday Rızası (Consent Verified):</strong> Özgeçmişimin ve eklenen kanıt kaynaklarımın Gemini AI ile analiz edilmesine ve yetkinlik kanıtı üretilmesine rıza gösteriyorum.
+                      <strong className="text-blue-400">Zero Trust Aday Rızası (Consent Verified):</strong> Belgelerimin ve eklenen kanıt kaynaklarımın Gemini AI ile analiz edilmesine rıza gösteriyorum.
                     </span>
                   </label>
                 </div>

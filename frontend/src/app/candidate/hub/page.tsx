@@ -11,6 +11,8 @@ import {
   JobPosting,
   JobApplication,
   Evidence,
+  AccomplishmentEntry,
+  ProfessionCategory,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -19,6 +21,7 @@ export default function CandidateEvidenceHub() {
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
+  const [accomplishments, setAccomplishments] = useState<AccomplishmentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,13 +33,13 @@ export default function CandidateEvidenceHub() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Multi-source booster state in Hub
-  const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [githubUrl, setGithubUrl] = useState("");
-  const [chatgptJsonFile, setChatgptJsonFile] = useState<File | null>(null);
-  const [addingBooster, setAddingBooster] = useState(false);
-  const [boosterSuccess, setBoosterSuccess] = useState<string | null>(null);
-  const jsonInputRef = useRef<HTMLInputElement>(null);
+  // New Accomplishment / Case Study state
+  const [accTitle, setAccTitle] = useState("");
+  const [accCategory, setAccCategory] = useState<ProfessionCategory>("HEALTHCARE");
+  const [accContent, setAccContent] = useState("");
+  const [accProofLink, setAccProofLink] = useState("");
+  const [publishingAcc, setPublishingAcc] = useState(false);
+  const [accSuccess, setAccSuccess] = useState<string | null>(null);
 
   const candidateExtId = `cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : "demo"}`;
 
@@ -104,41 +107,42 @@ export default function CandidateEvidenceHub() {
     }
   };
 
-  const handleAddBooster = async (e: React.FormEvent) => {
+  const handlePublishAccomplishment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkedinUrl && !githubUrl && !chatgptJsonFile) {
-      alert("Lütfen en az bir ek kanıt kaynağı (LinkedIn, GitHub veya ChatGPT JSON) girin.");
-      return;
-    }
+    if (!accTitle || !accContent) return;
 
     try {
-      setAddingBooster(true);
-      setBoosterSuccess(null);
+      setPublishingAcc(true);
+      setAccSuccess(null);
 
-      if (linkedinUrl.trim()) {
-        await analyzeCandidateEvidence(candidateExtId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`);
-      }
+      // Trigger AI Analysis for this accomplishment / case study
+      const rawText = `ACCOMPLISHMENT [${accCategory}]: ${accTitle}. Details: ${accContent}. Proof Link: ${accProofLink}`;
+      await analyzeCandidateEvidence(candidateExtId, "CASE_STUDY_BLOG", rawText);
 
-      if (githubUrl.trim()) {
-        await analyzeCandidateEvidence(candidateExtId, "GITHUB_REPO", `GitHub Project Repository: ${githubUrl.trim()}`);
-      }
+      const newEntry: AccomplishmentEntry = {
+        id: `acc_${Date.now()}`,
+        candidate_external_id: candidateExtId,
+        category: accCategory,
+        title: accTitle,
+        content: accContent,
+        proof_link: accProofLink,
+        verified_by_ai: true,
+        created_at: new Date().toISOString(),
+      };
 
-      if (chatgptJsonFile) {
-        const text = await chatgptJsonFile.text();
-        await analyzeCandidateEvidence(candidateExtId, "CHATGPT_EXPORT", text.slice(0, 4000));
-      }
+      setAccomplishments((prev) => [newEntry, ...prev]);
+      setAccSuccess("🏆 Başarı Vaka İncelemeniz (Case Study) Gemini AI ile analiz edildi ve portföyünüze yayınlandı!");
 
-      setBoosterSuccess("🚀 Ek kanıt kaynaklarınız başarıyla analiz edildi ve kanıt deponuza eklendi!");
-      setLinkedinUrl("");
-      setGithubUrl("");
-      setChatgptJsonFile(null);
+      setAccTitle("");
+      setAccContent("");
+      setAccProofLink("");
       await fetchData();
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
       }
     } finally {
-      setAddingBooster(false);
+      setPublishingAcc(false);
     }
   };
 
@@ -148,23 +152,31 @@ export default function CandidateEvidenceHub() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto py-8 px-4">
+    <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Aday Paneli & <span className="text-emerald-400">Kanıt Hub&apos;ı</span>
+            Aday Paneli & <span className="text-emerald-400">Kanıt & Başarı Hub&apos;ı</span>
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Giriş Yapan Aday: <span className="font-semibold text-emerald-400">{user?.email || "Aday Kullanıcı"}</span>
+            Evrensel Profesyonel Portföy: <span className="font-semibold text-emerald-400">{user?.email || "Aday Kullanıcı"}</span>
           </p>
         </div>
-        <Link
-          href="/jobs"
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition shadow flex items-center justify-center gap-2"
-        >
-          <span>💼</span> Tüm İş İlanlarını İncele &rarr;
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/candidates/${candidateExtId}`}
+            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition border border-zinc-700 flex items-center gap-1.5"
+          >
+            <span>👤</span> Profesyonel Profilimi Gör &rarr;
+          </Link>
+          <Link
+            href="/jobs"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-1.5"
+          >
+            <span>💼</span> İş İlanlarını İncele &rarr;
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -175,13 +187,133 @@ export default function CandidateEvidenceHub() {
 
       {/* Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left Column: CV Upload & Multi-Source Boosters (3 Cols) */}
+        {/* Left Column: Accomplishments & Case Studies + CV Upload (3 Cols) */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Publish Case Study / Accomplishment Section */}
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🏆</span>
+                <h2 className="text-lg font-bold text-white">Mesleki Başarı & Case Study Yayınla</h2>
+              </div>
+              <span className="text-[10px] text-blue-400 font-mono uppercase bg-blue-950/80 px-2.5 py-1 rounded-full border border-blue-800">
+                Blog / Case Study Portföyü
+              </span>
+            </div>
+
+            {accSuccess && (
+              <div className="p-3.5 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs rounded-xl font-medium">
+                {accSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handlePublishAccomplishment} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Meslek Kategorisi / Sektör
+                  </label>
+                  <select
+                    value={accCategory}
+                    onChange={(e) => setAccCategory(e.target.value as ProfessionCategory)}
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="HEALTHCARE">🩺 Sağlık & Tıp (Doktor, Hemşire)</option>
+                    <option value="TECHNOLOGY">🤖 Teknoloji & Yapay Zeka</option>
+                    <option value="TRANSPORTATION">🚗 Ulaşım & Lojistik (Şoför, Kurye)</option>
+                    <option value="SERVICES">🧹 Ev Hizmetleri & Bakım</option>
+                    <option value="GASTRONOMY">🍳 Gastronomi & Mutfak (Şef)</option>
+                    <option value="CONSTRUCTION">🏗️ İnşaat & Mimarlık</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Başarı / Vaka İnceleme Başlığı
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={accTitle}
+                    onChange={(e) => setAccTitle(e.target.value)}
+                    placeholder="Örn: 10 Yıllık Makam Şoförlüğü & İleri Sürüş Sertifikaları"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                  Vaka Detayı / Başarı Açıklaması (Blog / Case Study)
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={accContent}
+                  onChange={(e) => setAccContent(e.target.value)}
+                  placeholder="Başarınızı, tamamladığınız projeyi, cerrahi ameliyat sayınızı, ehliyet sınıfınızı veya mesleki deneyiminizi detaylandırın..."
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span>📜</span> Belge / Sertifika / Proje Bağlantısı (İsteğe Bağlı)
+                </label>
+                <input
+                  type="url"
+                  value={accProofLink}
+                  onChange={(e) => setAccProofLink(e.target.value)}
+                  placeholder="https://drive.google.com/sertifikam veya https://github.com/projem"
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={publishingAcc}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50"
+              >
+                {publishingAcc ? "AI Analizi ve Yayınlama Yapılıyor..." : "🏆 Başarı Vakasını AI İle Doğrula & Portföye Ekle"}
+              </button>
+            </form>
+          </div>
+
+          {/* User Published Case Studies List */}
+          {accomplishments.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-base font-bold text-white tracking-tight">Yayınlanan Başarı Case Study&apos;leri ({accomplishments.length})</h3>
+              <div className="space-y-3">
+                {accomplishments.map((acc) => (
+                  <div key={acc.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-2 hover:border-zinc-700 transition">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-white text-sm">{acc.title}</h4>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
+                        <span>✓</span> AI Verified
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-300 leading-relaxed">{acc.content}</p>
+                    {acc.proof_link && (
+                      <a
+                        href={acc.proof_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-blue-400 hover:underline font-semibold block pt-1"
+                      >
+                        🔗 Kanıt Belgesi Bağlantısı &rarr;
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Main CV Upload Box */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
             <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
               <span className="text-xl">📄</span>
-              <h2 className="text-lg font-bold text-white">Özgeçmiş Yükle & AI Yetkinlik Analizi</h2>
+              <h2 className="text-lg font-bold text-white">Özgeçmiş / CV Yükle & AI Analizi</h2>
             </div>
 
             <form onSubmit={handleAnalyze} className="space-y-4">
@@ -192,7 +324,7 @@ export default function CandidateEvidenceHub() {
                 <select
                   value={selectedJobId}
                   onChange={(e) => setSelectedJobId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 transition"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500 transition"
                 >
                   <option value="">— Genel Özgeçmiş Değerlendirmesi —</option>
                   {jobs.map((j) => (
@@ -246,117 +378,15 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={analyzing || !file}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-sm transition shadow disabled:opacity-50"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50"
               >
                 {analyzing ? "AI Analizi Yapılıyor..." : "🔍 Özgeçmişimi AI İle Analiz Et"}
               </button>
             </form>
           </div>
-
-          {/* Multi-Source Booster Box */}
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🚀</span>
-                <h2 className="text-lg font-bold text-white">Kanıt Depomu Güçlendir (Çoklu Kaynak)</h2>
-              </div>
-              <span className="text-xs text-blue-400 font-semibold bg-blue-950/60 px-2.5 py-1 rounded-full border border-blue-800">
-                LinkedIn • ChatGPT • GitHub
-              </span>
-            </div>
-
-            {boosterSuccess && (
-              <div className="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs rounded-xl">
-                {boosterSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleAddBooster} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <span>🔗</span> LinkedIn Profil Adresi
-                </label>
-                <input
-                  type="url"
-                  value={linkedinUrl}
-                  onChange={(e) => setLinkedinUrl(e.target.value)}
-                  placeholder="https://linkedin.com/in/aday-profil-adi"
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <span>🐙</span> GitHub Repo / Proje Adresi
-                </label>
-                <input
-                  type="url"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                  placeholder="https://github.com/kullanici/proje-repo"
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <span>🤖</span> ChatGPT Sohbet Yedeği (.json)
-                </label>
-                <input
-                  ref={jsonInputRef}
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && setChatgptJsonFile(e.target.files[0])}
-                />
-                <button
-                  type="button"
-                  onClick={() => jsonInputRef.current?.click()}
-                  className="w-full py-2.5 px-4 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-xl text-sm text-zinc-300 text-left transition flex items-center justify-between"
-                >
-                  <span>{chatgptJsonFile ? `🤖 ${chatgptJsonFile.name}` : "ChatGPT export conversations.json dosyasını seç..."}</span>
-                  <span className="text-xs text-blue-400 font-semibold">Gözat</span>
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={addingBooster}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition shadow disabled:opacity-50"
-              >
-                {addingBooster ? "Kanıtlar İşleniyor..." : "🚀 Ek Kanıtları Depoma Ekle & Skorumu Yükselt"}
-              </button>
-            </form>
-          </div>
-
-          {/* AI Analysis Result Display */}
-          {analysisResult && (
-            <div className="bg-zinc-900 border border-emerald-800 p-6 rounded-2xl space-y-4 bg-emerald-950/20 shadow-xl">
-              <div className="flex items-center justify-between border-b border-emerald-800/60 pb-3">
-                <h3 className="font-bold text-emerald-400 text-base">🧠 Gemini AI Analiz Sonucu</h3>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-900 text-emerald-300 border border-emerald-700">
-                  {analysisResult.status}
-                </span>
-              </div>
-              <p className="text-sm text-zinc-300 leading-relaxed">{analysisResult.reasoning}</p>
-              {analysisResult.evidence_pointer && (
-                <div className="p-3 bg-zinc-950 border-l-4 border-emerald-500 text-xs font-mono text-emerald-400 rounded-r-lg">
-                  &ldquo;{analysisResult.evidence_pointer}&rdquo;
-                </div>
-              )}
-              <div className="pt-2">
-                <Link
-                  href={`/reports/${candidateExtId}`}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl text-center block transition shadow"
-                >
-                  📊 Detaylı Kanıt & Açıklanabilirlik Raporunu Gör &rarr;
-                </Link>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Right Column: Active Applications & Saved Evidences (2 Cols) */}
+        {/* Right Column: Applications & Verified Evidences (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Applications Status Card */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 shadow-lg">

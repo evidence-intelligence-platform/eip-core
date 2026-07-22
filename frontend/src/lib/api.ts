@@ -34,12 +34,33 @@ export interface Evidence {
   created_at?: string;
 }
 
+export type ProfessionCategory =
+  | "ALL"
+  | "HEALTHCARE"
+  | "TECHNOLOGY"
+  | "TRANSPORTATION"
+  | "SERVICES"
+  | "GASTRONOMY"
+  | "CONSTRUCTION";
+
+export interface AccomplishmentEntry {
+  id?: string;
+  candidate_external_id: string;
+  category: ProfessionCategory;
+  title: string;
+  content: string;
+  proof_link?: string;
+  verified_by_ai?: boolean;
+  created_at?: string;
+}
+
 export interface JobPosting {
   id?: number;
   company_id?: number;
   company_name?: string;
   title: string;
   description: string;
+  category?: ProfessionCategory | string;
   status: string;
   created_at?: string;
 }

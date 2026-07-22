@@ -1,4 +1,37 @@
+# EIF AI Engine — Git Ignore Rules
+# Version: 1.1.0
+# Audit Fix (2026-07-22): Added *.db exclusion (SEC-5)
+# SQLite database files must NEVER be committed to version control.
+# They contain candidate evidence data and AI extraction results.
+
+# Virtual Environment
 venv/
+
+# Python Cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment Variables (NEVER commit)
 .env
+.env.local
+.env.*.local
+
+# SQLite Database Files (AUDIT FIX — SEC-5)
+# These files contain sensitive candidate data.
+# Database state must NEVER be version-controlled.
+*.db
+*.db-wal
+*.db-shm
+
+# Test Artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp

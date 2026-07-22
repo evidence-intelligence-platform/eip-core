@@ -1,8 +1,38 @@
-fastapi
-uvicorn
-pydantic
-google-genai
-python-dotenv
-sqlmodel>=0.0.16
-python-multipart
-PyPDF2
+# EIF AI Engine — Python Dependencies
+# Version: 1.1.0
+# Owner: EIF Architecture Team
+# Audit Fix (2026-07-22): Pinned all versions to prevent silent breaking changes.
+# Rule: Never use unpinned dependencies in a production-grade system.
+# Ref: ENGINEERING_STANDARDS.md Section 2 — "Specification Before Code"
+#
+# To update a dependency:
+#   1. Change the version pin below.
+#   2. Run: pip install -r requirements.txt
+#   3. Run all tests: pytest tests/
+#   4. Document the version change in git commit message.
+
+# Web Framework
+fastapi>=0.115.0,<1.0.0
+uvicorn>=0.32.0,<1.0.0
+
+# Data Validation (Pydantic is FastAPI's core — keep aligned)
+pydantic>=2.10.0,<3.0.0
+
+# Google Gemini AI SDK
+google-genai>=1.0.0,<2.0.0
+
+# Environment Configuration
+python-dotenv>=1.0.1,<2.0.0
+
+# ORM / Database
+sqlmodel>=0.0.21,<1.0.0
+
+# File Upload Support
+python-multipart>=0.0.12,<1.0.0
+
+# PDF Parsing
+PyPDF2>=3.0.1,<4.0.0
+
+# PostgreSQL Driver (required for production)
+# Use: DATABASE_URL=postgresql://user:pass@host:5432/eip_db
+psycopg2-binary>=2.9.9,<3.0.0

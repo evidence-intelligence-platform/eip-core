@@ -12,13 +12,13 @@ Usage:
   python scripts/benchmark.py --iterations 100
 """
 
-import sys
+import argparse
 import os
+import statistics
+import sys
 import time
 import uuid
-import statistics
-import argparse
-from typing import List, Dict, Any
+from typing import Any
 
 # Ensure root directory is in sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
@@ -26,14 +26,15 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 API_KEY = os.getenv("INTERNAL_API_KEY", "eif-test-internal-api-key")
 os.environ["INTERNAL_API_KEY"] = API_KEY
 
-from fastapi.testclient import TestClient
-from src.main import app
+from fastapi.testclient import TestClient  # noqa: E402
+
+from src.main import app  # noqa: E402
 
 client = TestClient(app)
 HEADERS = {"X-Internal-API-Key": API_KEY}
 
 
-def calculate_metrics(latencies_ms: List[float]) -> Dict[str, Any]:
+def calculate_metrics(latencies_ms: list[float]) -> dict[str, Any]:
     if not latencies_ms:
         return {"min": 0, "max": 0, "avg": 0, "p95": 0, "count": 0}
 
@@ -51,7 +52,7 @@ def calculate_metrics(latencies_ms: List[float]) -> Dict[str, Any]:
     }
 
 
-def print_table(results: Dict[str, Dict[str, Any]]):
+def print_table(results: dict[str, dict[str, Any]]):
     print("\n=========================================================================================")
     print(f" {'ENDPOINT / COMPONENT':<35} | {'COUNT':<6} | {'AVG (ms)':<9} | {'P95 (ms)':<9} | {'MIN (ms)':<9} | {'MAX (ms)':<9}")
     print("=========================================================================================")
@@ -69,7 +70,7 @@ def run_benchmark(iterations: int = 30):
     # ──────────────────────────────────────────────────────────────────────────
     # Benchmark 1: Health Check Endpoint (/docs)
     # ──────────────────────────────────────────────────────────────────────────
-    print(f"[BENCHMARK 1/4] Profiling Health Check Endpoint (/docs)...")
+    print("[BENCHMARK 1/4] Profiling Health Check Endpoint (/docs)...")
     latencies = []
     for _ in range(iterations):
         t0 = time.perf_counter()
@@ -82,7 +83,7 @@ def run_benchmark(iterations: int = 30):
     # ──────────────────────────────────────────────────────────────────────────
     # Benchmark 2: Auth Login & PBKDF2 Password Hashing Overhead
     # ──────────────────────────────────────────────────────────────────────────
-    print(f"[BENCHMARK 2/4] Profiling PBKDF2 Hashing & Auth Login (/api/v1/auth/login)...")
+    print("[BENCHMARK 2/4] Profiling PBKDF2 Hashing & Auth Login (/api/v1/auth/login)...")
     # Register test user
     test_email = f"bench_{uuid.uuid4().hex[:6]}@acme.com"
     client.post("/api/v1/auth/register", json={"email": test_email, "password": "Password123!", "role": "employer"})
@@ -99,7 +100,7 @@ def run_benchmark(iterations: int = 30):
     # ──────────────────────────────────────────────────────────────────────────
     # Benchmark 3: Database ORM Queries (/api/v1/jobs/)
     # ──────────────────────────────────────────────────────────────────────────
-    print(f"[BENCHMARK 3/4] Profiling Database ORM Query Latency (/api/v1/jobs/)...")
+    print("[BENCHMARK 3/4] Profiling Database ORM Query Latency (/api/v1/jobs/)...")
     latencies = []
     for _ in range(iterations):
         t0 = time.perf_counter()
@@ -112,7 +113,7 @@ def run_benchmark(iterations: int = 30):
     # ──────────────────────────────────────────────────────────────────────────
     # Benchmark 4: AI Extraction Endpoint (/api/v1/extract)
     # ──────────────────────────────────────────────────────────────────────────
-    print(f"[BENCHMARK 4/4] Profiling AI Evidence Extraction Route (/api/v1/extract)...")
+    print("[BENCHMARK 4/4] Profiling AI Evidence Extraction Route (/api/v1/extract)...")
     payload = {
         "payload": {
             "candidate_id": "cand_bench_1",

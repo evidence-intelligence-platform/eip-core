@@ -19,8 +19,9 @@ AUDIT FIXES (2026-07-22):
 """
 
 import os
-from sqlmodel import SQLModel, create_engine, Session
+
 from dotenv import load_dotenv
+from sqlmodel import Session, SQLModel, create_engine
 
 load_dotenv()
 

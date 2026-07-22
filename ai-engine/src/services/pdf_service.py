@@ -1,5 +1,7 @@
 import io
+
 import PyPDF2
+
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """

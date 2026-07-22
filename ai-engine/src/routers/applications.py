@@ -6,12 +6,14 @@ Owner: EIF Architecture Team
 Compliance: 05_DATABASE_SCHEMA.md — JOB_APPLICATIONS Entity
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
-from typing import List, Literal
+
 from src.db.database import get_session
-from src.db.models import JobApplication, Candidate, JobPosting
+from src.db.models import Candidate, JobApplication, JobPosting
 
 router = APIRouter(
     prefix="/api/v1/applications",
@@ -23,8 +25,8 @@ class ApplicationStatusUpdate(BaseModel):
     status: Literal["submitted", "reviewing", "accepted", "declined"]
 
 
-@router.get("/", response_model=List[JobApplication], summary="List all job applications")
-def list_applications(session: Session = Depends(get_session)) -> List[JobApplication]:
+@router.get("/", response_model=list[JobApplication], summary="List all job applications")
+def list_applications(session: Session = Depends(get_session)) -> list[JobApplication]:
     """Lists all submitted job applications."""
     applications = session.exec(select(JobApplication)).all()
     return applications

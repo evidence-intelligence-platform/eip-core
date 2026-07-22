@@ -11,16 +11,17 @@ Uses standard cryptographic algorithms (PBKDF2-HMAC-SHA256 & HMAC-SHA256 JWT)
 to ensure 100% zero-dependency security without binary C-extension compilation issues.
 """
 
-import os
-import json
 import base64
-import hmac
 import hashlib
+import hmac
+import json
+import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Any
+
 from dotenv import load_dotenv
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 load_dotenv()
 
@@ -87,7 +88,7 @@ def _b64_url_decode(data_str: str) -> bytes:
     return base64.urlsafe_b64decode(data_str + padding)
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """
     Generates a signed JWT access token containing the provided claims.
     """
@@ -111,7 +112,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return f"{signing_input}.{signature_bytes}"
 
 
-def decode_access_token(token: str) -> Dict[str, Any]:
+def decode_access_token(token: str) -> dict[str, Any]:
     """
     Decodes and verifies a HS256 signed JWT access token.
 
@@ -154,8 +155,8 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
 
 def get_current_user_payload(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
-) -> Dict[str, Any]:
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)
+) -> dict[str, Any]:
     """
     FastAPI dependency to extract and verify the current authenticated user JWT payload.
     """

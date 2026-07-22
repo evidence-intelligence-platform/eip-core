@@ -14,8 +14,8 @@ Validates the 7 stages of the Evidence Intelligence Platform lifecycle:
 7. Evidence Audit & Summary
 """
 
-import sys
 import os
+import sys
 import uuid
 
 # Ensure root directory is in sys.path
@@ -25,16 +25,17 @@ API_KEY = os.getenv("INTERNAL_API_KEY", "eif-test-internal-api-key")
 os.environ["INTERNAL_API_KEY"] = API_KEY
 HEADERS = {"X-Internal-API-Key": API_KEY}
 
-from fastapi.testclient import TestClient
-from src.main import app
+from fastapi.testclient import TestClient  # noqa: E402
+
+from src.main import app  # noqa: E402
 
 client = TestClient(app)
 
 
 def log_stage(stage_num: int, title: str):
-    print(f"\n==================================================")
+    print("\n==================================================")
     print(f" STAGE {stage_num}: {title}")
-    print(f"==================================================")
+    print("==================================================")
 
 
 def log_pass(msg: str):

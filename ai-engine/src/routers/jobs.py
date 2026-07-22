@@ -6,12 +6,13 @@ Owner: EIF Architecture Team
 Compliance: 05_DATABASE_SCHEMA.md — JOBS Entity
 """
 
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
-from typing import List, Optional
+
 from src.db.database import get_session
-from src.db.models import JobPosting, Company
+from src.db.models import Company, JobPosting
 
 router = APIRouter(
     prefix="/api/v1/jobs",
@@ -20,15 +21,15 @@ router = APIRouter(
 
 
 class JobCreate(BaseModel):
-    company_name: Optional[str] = "Acme Corp"
-    company_id: Optional[int] = None
+    company_name: str | None = "Acme Corp"
+    company_id: int | None = None
     title: str
     description: str
-    status: Optional[str] = "active"
+    status: str | None = "active"
 
 
-@router.get("/", response_model=List[JobPosting], summary="List all active job postings")
-def list_jobs(session: Session = Depends(get_session)) -> List[JobPosting]:
+@router.get("/", response_model=list[JobPosting], summary="List all active job postings")
+def list_jobs(session: Session = Depends(get_session)) -> list[JobPosting]:
     """Returns all active job postings."""
     jobs = session.exec(select(JobPosting).where(JobPosting.status == "active")).all()
     return jobs

@@ -14,13 +14,12 @@ Usage:
   python scripts/backup_db.py prune
 """
 
-import sys
-import os
-import shutil
-import gzip
 import datetime
 import glob
-from typing import List
+import gzip
+import os
+import shutil
+import sys
 
 # Ensure root directory is in sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
@@ -73,7 +72,7 @@ def create_backup():
         backup_path = os.path.join(BACKUP_DIR, backup_name)
         # Note: pg_dump would run via subprocess if pg_dump is available
         print(f"[BACKUP] Target PostgreSQL backup archive: {backup_name}")
-        print(f"[SUCCESS] PostgreSQL backup configuration verified!")
+        print("[SUCCESS] PostgreSQL backup configuration verified!")
     else:
         print(f"[ERROR] Unsupported DATABASE_URL scheme: {db_url}")
         sys.exit(1)
@@ -125,7 +124,7 @@ def restore_backup(backup_filename: str):
 
         print(f"[SUCCESS] Database successfully restored from {backup_filename}!")
     else:
-        print(f"[ERROR] Restore for non-SQLite databases requires pg_restore CLI.")
+        print("[ERROR] Restore for non-SQLite databases requires pg_restore CLI.")
 
 
 def prune_old_backups():

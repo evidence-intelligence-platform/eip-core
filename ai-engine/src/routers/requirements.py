@@ -1,6 +1,7 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
-from typing import List
+
 from src.db.database import get_session
 from src.db.models import Requirement
 
@@ -9,7 +10,7 @@ router = APIRouter(
     tags=["requirements"],
 )
 
-@router.get("/", response_model=List[Requirement])
+@router.get("/", response_model=list[Requirement])
 def list_requirements(session: Session = Depends(get_session)):
     requirements = session.exec(select(Requirement)).all()
     return requirements

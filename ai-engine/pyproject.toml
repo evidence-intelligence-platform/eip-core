@@ -1,0 +1,39 @@
+[tool.ruff]
+# Target Python version
+target-version = "py311"
+
+# Maximum line length
+line-length = 120
+
+# Directories to exclude
+exclude = [
+    ".git",
+    "venv",
+    ".pytest_cache",
+    "alembic/versions",
+    "backups",
+]
+
+[tool.ruff.lint]
+# Selected rule sets:
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort (import sorting)
+# B: flake8-bugbear
+# UP: pyupgrade
+select = ["E", "F", "I", "B", "UP"]
+
+# Rules to ignore if necessary for FastAPI/SQLModel patterns
+ignore = [
+    "B008",  # Do not perform function calls in argument defaults (FastAPI Depends)
+    "E501",  # Line too long (handled by formatter)
+    "B904",  # Within an except clause raise from err
+    "B011",  # Do not assert False
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

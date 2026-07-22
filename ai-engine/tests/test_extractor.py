@@ -15,7 +15,7 @@ NOTE: These tests require a valid GEMINI_API_KEY and make live API calls.
   To run: python -m pytest tests/test_extractor.py -v
 """
 
-from src.models.schemas import ExtractRequest, EvidencePayload, Requirement
+from src.models.schemas import EvidencePayload, ExtractRequest, Requirement
 
 
 def _get_llm():
@@ -23,7 +23,7 @@ def _get_llm():
     from src.services.llm_service import GeminiLLMService
     try:
         return GeminiLLMService()
-    except ValueError as e:
+    except ValueError:
         return None
 
 

@@ -18,8 +18,9 @@ AUDIT FIXES (2026-07-22):
   - [FIXED] Added max_length to raw_data to prevent oversized LLM requests (SEC-4).
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, Literal
 
 
 class EvidencePayload(BaseModel):
@@ -99,7 +100,7 @@ class ExtractionResult(BaseModel):
             "Must reference observable evidence, not personality assessments."
         )
     )
-    evidence_pointer: Optional[str] = Field(
+    evidence_pointer: str | None = Field(
         None,
         description=(
             "URL, direct quote, or exact reference to the evidence in the raw data. "

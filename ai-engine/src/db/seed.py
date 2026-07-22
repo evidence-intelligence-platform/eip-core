@@ -11,13 +11,20 @@ Usage:
   python -m src.db.seed
 """
 
-from sqlmodel import Session, select
 from datetime import datetime
 
-from src.db.database import engine, create_db_and_tables
+from sqlmodel import Session, select
+
+from src.db.database import create_db_and_tables, engine
 from src.db.models import (
-    Company, UserAccount, Candidate, Requirement,
-    JobPosting, JobApplication, Evidence, ExplainabilityReport, Role
+    Candidate,
+    Company,
+    Evidence,
+    ExplainabilityReport,
+    JobApplication,
+    JobPosting,
+    Requirement,
+    UserAccount,
 )
 from src.security.jwt import hash_password
 

@@ -15,10 +15,12 @@ AUDIT FIX (2026-07-22):
 """
 
 import os
-from google import genai
-from src.models.schemas import ExtractRequest, ExtractionResult
-from src.services.base_llm import BaseLLMService
+
 from dotenv import load_dotenv
+from google import genai
+
+from src.models.schemas import ExtractionResult, ExtractRequest
+from src.services.base_llm import BaseLLMService
 
 load_dotenv()
 

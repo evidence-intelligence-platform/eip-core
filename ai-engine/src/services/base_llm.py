@@ -13,7 +13,8 @@ class, not changes to business logic.
 """
 
 from abc import ABC, abstractmethod
-from src.models.schemas import ExtractRequest, ExtractionResult
+
+from src.models.schemas import ExtractionResult, ExtractRequest
 
 
 class BaseLLMService(ABC):

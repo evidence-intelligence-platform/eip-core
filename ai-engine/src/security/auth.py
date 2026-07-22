@@ -25,7 +25,8 @@ SETUP:
 """
 
 import os
-from fastapi import Security, HTTPException, status
+
+from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
 # The header name used to pass the internal API key

@@ -9,9 +9,11 @@ Compliance: 05_DATABASE_SCHEMA.md
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
+
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
@@ -20,6 +22,7 @@ load_dotenv()
 
 # Import SQLModel and all ORM models so SQLModel.metadata registers all tables
 from sqlmodel import SQLModel  # noqa: E402
+
 from src.db import models  # noqa: E402, F401
 
 config = context.config

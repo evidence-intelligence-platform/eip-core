@@ -17,9 +17,10 @@ TECHNICAL NOTE on in-memory SQLite:
 """
 
 import os
+
 import pytest
-from sqlmodel import SQLModel, Session, create_engine
 from fastapi.testclient import TestClient
+from sqlmodel import Session, SQLModel, create_engine
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Setup (must happen before any app module is imported)
@@ -35,10 +36,10 @@ os.environ["DEBUG"] = "false"
 # Import App (after env vars are set)
 # ─────────────────────────────────────────────────────────────────────────────
 
-from src.main import app  # noqa: E402
-from src.db.database import get_session  # noqa: E402
 # Must import all models before create_all() so SQLModel registers them
 from src.db import models  # noqa: E402, F401
+from src.db.database import get_session  # noqa: E402
+from src.main import app  # noqa: E402
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared Named In-Memory SQLite Engine

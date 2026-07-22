@@ -12,8 +12,9 @@ To run: python -m pytest tests/test_db_integration.py -v
 """
 
 from sqlmodel import Session, select
-from tests.conftest import TEST_ENGINE
+
 from src.db.models import Evidence
+from tests.conftest import TEST_ENGINE
 
 
 def test_extract_evidence_saves_to_db(client):
@@ -26,8 +27,8 @@ def test_extract_evidence_saves_to_db(client):
 
     Uses a MockLLMService — no live API call is made.
     """
-    from src.models.schemas import ExtractionResult
     import src.main as main_module
+    from src.models.schemas import ExtractionResult
 
     original_llm_service = main_module.llm_service
 

@@ -6,14 +6,15 @@ Owner: EIF Architecture Team
 Compliance: 06_API_CONTRACTS.md — User authentication & token issuance
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
-from typing import Optional, Literal
 
 from src.db.database import get_session
-from src.db.models import UserAccount, Candidate
-from src.security.jwt import hash_password, verify_password, create_access_token, get_current_user_payload
+from src.db.models import Candidate, UserAccount
+from src.security.jwt import create_access_token, get_current_user_payload, hash_password, verify_password
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -25,7 +26,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=6, description="Password (min 6 chars)")
     role: Literal["employer", "candidate", "admin"] = Field("candidate", description="User role")
-    full_name: Optional[str] = Field(None, description="Candidate or Employer name")
+    full_name: str | None = Field(None, description="Candidate or Employer name")
 
 
 class LoginRequest(BaseModel):

@@ -19,23 +19,25 @@ AUDIT FIXES (2026-07-22):
     before any deployment.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Request
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from sqlmodel import Session
-from typing import Annotated
 
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlmodel import Session
 
-from src.models.schemas import ExtractRequest, ExtractionResult, EvidencePayload, Requirement as SchemaRequirement
-from src.services.llm_service import GeminiLLMService
-from src.services.base_llm import BaseLLMService
 from src.db.database import create_db_and_tables, get_session
-from src.db.models import Candidate, Requirement, Evidence
-from src.routers import candidates, requirements, auth, jobs, applications
+from src.db.models import Evidence, Requirement
+from src.models.schemas import EvidencePayload, ExtractionResult, ExtractRequest
+from src.models.schemas import Requirement as SchemaRequirement
+from src.routers import applications, auth, candidates, jobs, requirements
 from src.security.auth import verify_api_key
+from src.services.base_llm import BaseLLMService
+from src.services.llm_service import GeminiLLMService
 from src.services.pdf_service import extract_text_from_pdf_bytes
 
 # Initialize Rate Limiter (15 requests/minute per client IP)
@@ -52,8 +54,6 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 
 # OpenAPI Tags Metadata
 tags_metadata = [
@@ -105,7 +105,6 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-from fastapi.responses import HTMLResponse
 
 # Custom EIP Dark Theme Swagger UI Route
 @app.get("/docs", include_in_schema=False)

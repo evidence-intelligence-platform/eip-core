@@ -1,0 +1,168 @@
+"""
+EIF: Database Seeder Script
+---
+Version: 1.0.0
+Owner: EIF Architecture Team
+Compliance: 05_DATABASE_SCHEMA.md
+---
+Populates the database with realistic demo data for immediate full-stack demonstration.
+
+Usage:
+  python -m src.db.seed
+"""
+
+from sqlmodel import Session, select
+from datetime import datetime
+
+from src.db.database import engine, create_db_and_tables
+from src.db.models import (
+    Company, UserAccount, Candidate, Requirement,
+    JobPosting, JobApplication, Evidence, ExplainabilityReport, Role
+)
+from src.security.jwt import hash_password
+
+
+def seed_database():
+    """Seeds sample companies, users, candidates, jobs, applications, and evidences."""
+    print("[INIT] Initializing database schema...")
+    create_db_and_tables()
+
+    with Session(engine) as session:
+        # Check if already seeded
+        existing_company = session.exec(select(Company)).first()
+        if existing_company:
+            print("[INFO] Database already contains data. Skipping seeder.")
+            return
+
+        print("[SEED] Seeding Companies...")
+        acme = Company(name="Acme Corp", industry="Enterprise Software")
+        techwave = Company(name="TechWave AI", industry="Artificial Intelligence")
+        session.add(acme)
+        session.add(techwave)
+        session.commit()
+        session.refresh(acme)
+        session.refresh(techwave)
+
+        print("[SEED] Seeding User Accounts & Candidates...")
+        # Employer user
+        emp_user = UserAccount(
+            email="employer@acme.com",
+            hashed_password=hash_password("employer123"),
+            role="employer"
+        )
+        session.add(emp_user)
+
+        # Candidate 1: Alice Chen
+        cand1_user = UserAccount(
+            email="alice@chen.dev",
+            hashed_password=hash_password("candidate123"),
+            role="candidate"
+        )
+        session.add(cand1_user)
+        session.commit()
+
+        alice = Candidate(
+            external_id="cand_alice_chen",
+            name="Alice Chen",
+            consent_granted=True,
+            created_at=datetime.utcnow()
+        )
+        bob = Candidate(
+            external_id="cand_bob_smith",
+            name="Bob Smith",
+            consent_granted=True,
+            created_at=datetime.utcnow()
+        )
+        session.add(alice)
+        session.add(bob)
+        session.commit()
+
+        print("[SEED] Seeding Requirements...")
+        req1 = Requirement(
+            external_id="req_react_state",
+            description="Must demonstrate advanced React Context state management in production code."
+        )
+        req2 = Requirement(
+            external_id="req_python_fastapi",
+            description="Must have proven experience designing asynchronous REST APIs with FastAPI and Pydantic."
+        )
+        req3 = Requirement(
+            external_id="req_cicd_pipeline",
+            description="Must have designed and deployed automated GitHub Actions CI/CD workflows."
+        )
+        session.add(req1)
+        session.add(req2)
+        session.add(req3)
+        session.commit()
+
+        print("[SEED] Seeding Job Postings...")
+        job1 = JobPosting(
+            company_id=acme.id,
+            title="Senior React Engineer",
+            description="Looking for a frontend specialist proficient in modern React, state architecture, and micro-frontends.",
+            status="active"
+        )
+        job2 = JobPosting(
+            company_id=techwave.id,
+            title="Python AI Systems Engineer",
+            description="Seeking a backend engineer to build scalable AI services using FastAPI, PyTorch, and vector databases.",
+            status="active"
+        )
+        session.add(job1)
+        session.add(job2)
+        session.commit()
+
+        print("[SEED] Seeding Job Applications...")
+        app1 = JobApplication(
+            candidate_id=alice.id,
+            job_id=job1.id,
+            status="reviewing"
+        )
+        session.add(app1)
+        session.commit()
+
+        print("[SEED] Seeding AI Evidence Extractions...")
+        e1 = Evidence(
+            candidate_external_id=alice.external_id,
+            requirement_external_id=req1.external_id,
+            source_type="GITHUB",
+            status="VERIFIED",
+            reasoning="Alice has implemented global state using React Context across multiple production repositories. Directly verified in repository alice/ecommerce-app.",
+            evidence_pointer="github.com/alice/ecommerce-app/commit/9f8d7a#diff-auth-context",
+        )
+        e2 = Evidence(
+            candidate_external_id=alice.external_id,
+            requirement_external_id=req3.external_id,
+            source_type="CHATGPT",
+            status="INSUFFICIENT EVIDENCE",
+            reasoning="No GitHub Actions or CI/CD workflow files (.github/workflows) were detected in the candidate's provided code payloads.",
+            evidence_pointer=None,
+        )
+        e3 = Evidence(
+            candidate_external_id=bob.external_id,
+            requirement_external_id=req2.external_id,
+            source_type="PDF_RESUME",
+            status="VERIFIED",
+            reasoning="Candidate resume explicitly details building 5+ FastAPI async microservices serving 10M daily requests at previous employer.",
+            evidence_pointer="pdf://resume.pdf#page=1&section=experience",
+        )
+        session.add(e1)
+        session.add(e2)
+        session.add(e3)
+        session.commit()
+
+        print("[SEED] Seeding Explainability Reports...")
+        report1 = ExplainabilityReport(
+            application_id=app1.id,
+            candidate_external_id=alice.external_id,
+            match_matrix='{"req_react_state": "VERIFIED", "req_cicd_pipeline": "INSUFFICIENT EVIDENCE"}',
+            final_summary="Alice Chen shows strong verified expertise in React State Management. CI/CD capabilities require probing during human interview."
+        )
+        session.add(report1)
+        session.commit()
+
+    print("[SUCCESS] Database successfully seeded with demo data!")
+
+
+if __name__ == "__main__":
+    seed_database()

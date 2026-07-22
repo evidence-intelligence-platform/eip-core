@@ -1,0 +1,47 @@
+"""
+EIF: Job Application Router
+---
+Version: 1.0.0
+Owner: EIF Architecture Team
+Compliance: 05_DATABASE_SCHEMA.md — JOB_APPLICATIONS Entity
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session, select
+from typing import List
+from src.db.database import get_session
+from src.db.models import JobApplication, Candidate, JobPosting
+
+router = APIRouter(
+    prefix="/api/v1/applications",
+    tags=["job-applications"],
+)
+
+
+@router.get("/", response_model=List[JobApplication], summary="List all job applications")
+def list_applications(session: Session = Depends(get_session)) -> List[JobApplication]:
+    """Lists all submitted job applications."""
+    applications = session.exec(select(JobApplication)).all()
+    return applications
+
+
+@router.post("/", response_model=JobApplication, status_code=status.HTTP_201_CREATED, summary="Submit a job application")
+def create_application(app_in: JobApplication, session: Session = Depends(get_session)) -> JobApplication:
+    """Submits a candidate application for a specific job posting."""
+    candidate = session.exec(select(Candidate).where(Candidate.id == app_in.candidate_id)).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail=f"Candidate ID {app_in.candidate_id} not found.")
+
+    job = session.exec(select(JobPosting).where(JobPosting.id == app_in.job_id)).first()
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job posting ID {app_in.job_id} not found.")
+
+    application = JobApplication(
+        candidate_id=app_in.candidate_id,
+        job_id=app_in.job_id,
+        status=app_in.status or "submitted",
+    )
+    session.add(application)
+    session.commit()
+    session.refresh(application)
+    return application

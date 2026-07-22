@@ -30,7 +30,7 @@ from src.services.llm_service import GeminiLLMService
 from src.services.base_llm import BaseLLMService
 from src.db.database import create_db_and_tables, get_session
 from src.db.models import Candidate, Requirement, Evidence
-from src.routers import candidates, requirements
+from src.routers import candidates, requirements, auth, jobs, applications
 from src.security.auth import verify_api_key
 from src.services.pdf_service import extract_text_from_pdf_bytes
 
@@ -72,6 +72,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(jobs.router)
+app.include_router(applications.router)
 app.include_router(candidates.router)
 app.include_router(requirements.router)
 

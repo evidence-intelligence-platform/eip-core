@@ -38,7 +38,7 @@ os.environ["DEBUG"] = "false"
 from src.main import app  # noqa: E402
 from src.db.database import get_session  # noqa: E402
 # Must import all models before create_all() so SQLModel registers them
-from src.db.models import Candidate, Requirement, Evidence  # noqa: E402, F401
+from src.db import models  # noqa: E402, F401
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared Named In-Memory SQLite Engine

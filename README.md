@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EIP Core Repository (`eip-core`)
 
-## Getting Started
+This repository contains the full platform implementation for the **Evidence Intelligence Platform (EIP)**, comprising the Isolated Intelligence Zone AI Engine and the Next.js Web Frontend.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🏗️ Repository Architecture
+
+```
+eip-core/
+├── ai-engine/      # Python 3.11 / FastAPI — Isolated Intelligence Zone
+└── frontend/       # Next.js 15 / TypeScript — Public Web Interface
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 1. AI Engine (`/ai-engine`)
+- **Framework:** FastAPI + SQLModel + Google GenAI SDK
+- **Port:** `8080`
+- **Docs:** `http://localhost:8080/docs`
+- **Key Responsibilities:** Deterministic evidence extraction, PDF parsing, Zero Trust API authentication, SQL persistence.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Frontend (`/frontend`)
+- **Framework:** Next.js (App Router) + Tailwind CSS + TypeScript
+- **Port:** `3000`
+- **Key Views:**
+  - Employer Dashboard (`/employer/dashboard`)
+  - Candidate Evidence Hub (`/candidate/hub`)
+  - Candidates Directory (`/candidates`)
+  - Candidate Detail View (`/candidates/[id]`)
+  - Explainability Report View (`/reports/[id]`)
+  - Requirements Directory (`/requirements`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## ⚡ Quick Start
 
-To learn more about Next.js, take a look at the following resources:
+### 1. Run AI Engine
+```bash
+cd ai-engine
+python -m venv venv
+venv\Scripts\activate       # Windows
+source venv/bin/activate    # Linux/macOS
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn src.main:app --reload --port 8080
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2. Run Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🧪 Running Tests
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+cd ai-engine
+venv\Scripts\python.exe -m pytest tests/ -v
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## 🔒 Governance & Security Compliance
+Refer to the `eif-core-docs` repository for constitutional rules (`01_ENGINEERING_CONSTITUTION.md`), database schemas (`05_DATABASE_SCHEMA.md`), and security architecture (`08_SECURITY_ARCHITECTURE.md`).

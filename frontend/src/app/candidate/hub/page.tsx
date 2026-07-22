@@ -495,6 +495,17 @@ export default function CandidateEvidenceHub() {
                       )}
                     </div>
                   ))}
+                  
+                  {selectedCandidateId && (
+                    <div className="pt-3 border-t border-zinc-800 flex justify-center">
+                      <a
+                        href={`/reports/${selectedCandidateId}`}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs text-center transition shadow inline-block"
+                      >
+                        📊 View Full Explainability Report &rarr;
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

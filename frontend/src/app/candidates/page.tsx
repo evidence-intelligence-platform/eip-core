@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCandidates, createCandidate, Candidate } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export default function CandidatesPage() {
+  const { user } = useAuth();
+  const isCandidate = user?.role === "candidate";
+
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [newExternalId, setNewExternalId] = useState("");
@@ -52,30 +56,59 @@ export default function CandidatesPage() {
     }
   };
 
+  // If candidate logs in and lands here, show clean role notice
+  if (isCandidate) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4 text-center space-y-6">
+        <div className="p-8 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+          <div className="text-4xl">👥</div>
+          <h1 className="text-2xl font-bold text-white">İşveren Aday Havuzu</h1>
+          <p className="text-sm text-zinc-400 leading-relaxed">
+            Bu sayfa işverenlerin başvuran adayları ve yetkinlik raporlarını incelediği alandır. Bir aday olarak kendi profilinizi yönetmek, CV yüklemek ve ilanlara başvurmak için Aday Paneli&apos;ni kullanabilirsiniz.
+          </p>
+          <div className="pt-2 flex justify-center gap-4">
+            <Link
+              href="/candidate/hub"
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl transition shadow"
+            >
+              🎯 Aday Paneline Git &rarr;
+            </Link>
+            <Link
+              href="/jobs"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-xl transition shadow"
+            >
+              💼 İş İlanlarını İncele &rarr;
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-6xl mx-auto py-4">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Candidates</h1>
-        <p className="text-zinc-400 mt-2">Manage candidates and view their extracted evidence.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Aday Havuzu & Değerlendirme</h1>
+        <p className="text-zinc-400 mt-2 text-sm">Sistemde kayıtlı adayları ve AI tarafından çıkarılan kanıt raporlarını inceleyin.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-4">
-          <h2 className="text-xl font-semibold">Candidate List</h2>
+          <h2 className="text-xl font-semibold text-white">Aday Listesi</h2>
           {loading ? (
-            <p className="text-zinc-400">Loading...</p>
+            <p className="text-zinc-400 text-sm">Yükleniyor...</p>
           ) : candidates.length === 0 ? (
-            <p className="text-zinc-500">No candidates found.</p>
+            <p className="text-zinc-500 text-sm">Kayıtlı aday bulunamadı.</p>
           ) : (
             <div className="grid gap-4">
               {candidates.map((c) => (
-                <div key={c.external_id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 flex justify-between items-center">
+                <div key={c.external_id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 flex justify-between items-center hover:border-zinc-700 transition">
                   <div>
-                    <h3 className="font-medium text-lg">{c.name}</h3>
-                    <p className="text-sm text-zinc-500 font-mono">{c.external_id}</p>
+                    <h3 className="font-medium text-lg text-white">{c.name}</h3>
+                    <p className="text-xs text-zinc-500 font-mono">{c.external_id}</p>
                   </div>
-                  <Link href={`/candidates/${c.external_id}`} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-                    View Evidences
+                  <Link href={`/candidates/${c.external_id}`} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
+                    📊 Rapor & Kanıtlar &rarr;
                   </Link>
                 </div>
               ))}
@@ -84,39 +117,39 @@ export default function CandidatesPage() {
         </div>
 
         <div>
-          <div className="p-6 rounded-xl border border-zinc-800 bg-zinc-900 sticky top-8">
-            <h2 className="text-xl font-semibold mb-4">Add Candidate</h2>
-            {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 text-red-200 rounded-lg text-sm">{error}</div>}
+          <div className="p-6 rounded-xl border border-zinc-800 bg-zinc-900 sticky top-8 space-y-4">
+            <h2 className="text-xl font-semibold text-white">Manuel Aday Ekle</h2>
+            {error && <div className="p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg text-xs">{error}</div>}
             
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">External ID</label>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Aday ID (External ID)</label>
                 <input
                   type="text"
                   required
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. cand_001"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Örn: cand_001"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">Name</label>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Aday Adı & Soyadı</label>
                 <input
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. John Doe"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Örn: Jane Doe"
                 />
               </div>
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-zinc-100 hover:bg-white text-zinc-900 font-medium py-2 rounded-lg transition-colors disabled:opacity-50"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg text-xs transition disabled:opacity-50"
               >
-                {submitting ? "Adding..." : "Add Candidate"}
+                {submitting ? "Ekleniyor..." : "Aday Ekle"}
               </button>
             </form>
           </div>

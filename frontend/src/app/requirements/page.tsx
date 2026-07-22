@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getRequirements, createRequirement, Requirement } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export default function RequirementsPage() {
+  const { user } = useAuth();
+  const isCandidate = user?.role === "candidate";
+
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [newExternalId, setNewExternalId] = useState("");
@@ -51,26 +56,57 @@ export default function RequirementsPage() {
     }
   };
 
+  // If candidate logs in and lands here, show clean role notice
+  if (isCandidate) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4 text-center space-y-6">
+        <div className="p-8 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+          <div className="text-4xl">📋</div>
+          <h1 className="text-2xl font-bold text-white">İşveren Gereksinim Yönetimi</h1>
+          <p className="text-sm text-zinc-400 leading-relaxed">
+            Bu sayfa işverenlerin teknik pozisyon gereksinimlerini tanımladığı alandır. Aday olarak başvurabileceğiniz aktif pozisyonları görmek için İş İlanları sayfasını kullanabilirsiniz.
+          </p>
+          <div className="pt-2 flex justify-center gap-4">
+            <Link
+              href="/jobs"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-xl transition shadow"
+            >
+              💼 İş İlanlarını İncele &rarr;
+            </Link>
+            <Link
+              href="/candidate/hub"
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl transition shadow"
+            >
+              🎯 Aday Paneline Git &rarr;
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-6xl mx-auto py-4">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Requirements</h1>
-        <p className="text-zinc-400 mt-2">Manage the skills and qualifications the AI will look for.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">İş Gereksinimleri & Kriterleri</h1>
+        <p className="text-zinc-400 mt-2 text-sm">İşverenlerin AI tarafından aranmasını istediği teknik gereksinim kuralları.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-4">
-          <h2 className="text-xl font-semibold">Requirement List</h2>
+          <h2 className="text-xl font-semibold text-white">Gereksinim Listesi</h2>
           {loading ? (
-            <p className="text-zinc-400">Loading...</p>
+            <p className="text-zinc-400 text-sm">Yükleniyor...</p>
           ) : requirements.length === 0 ? (
-            <p className="text-zinc-500">No requirements found.</p>
+            <p className="text-zinc-500 text-sm">Kayıtlı gereksinim bulunamadı.</p>
           ) : (
             <div className="grid gap-4">
               {requirements.map((r) => (
-                <div key={r.external_id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900">
-                  <h3 className="font-medium text-lg text-white mb-2">{r.description}</h3>
-                  <span className="text-xs font-mono px-2 py-1 bg-zinc-800 text-zinc-300 rounded">{r.external_id}</span>
+                <div key={r.external_id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 space-y-1 hover:border-zinc-700 transition">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-mono text-blue-400 font-bold">{r.external_id}</span>
+                  </div>
+                  <p className="text-sm text-zinc-200">{r.description}</p>
                 </div>
               ))}
             </div>
@@ -78,38 +114,39 @@ export default function RequirementsPage() {
         </div>
 
         <div>
-          <div className="p-6 rounded-xl border border-zinc-800 bg-zinc-900 sticky top-8">
-            <h2 className="text-xl font-semibold mb-4">Add Requirement</h2>
-            {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 text-red-200 rounded-lg text-sm">{error}</div>}
+          <div className="p-6 rounded-xl border border-zinc-800 bg-zinc-900 sticky top-8 space-y-4">
+            <h2 className="text-xl font-semibold text-white">Yeni Gereksinim Tanımla</h2>
+            {error && <div className="p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg text-xs">{error}</div>}
             
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">External ID</label>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Gereksinim ID (External ID)</label>
                 <input
                   type="text"
                   required
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. req_react_1"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Örn: req_001"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">Description</label>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Gereksinim Açıklaması</label>
                 <textarea
                   required
+                  rows={3}
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
-                  placeholder="e.g. Must have advanced knowledge of React state management"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Örn: React custom hook deneyimi en az 2 yıl olmalı."
                 />
               </div>
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-zinc-100 hover:bg-white text-zinc-900 font-medium py-2 rounded-lg transition-colors disabled:opacity-50"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg text-xs transition disabled:opacity-50"
               >
-                {submitting ? "Adding..." : "Add Requirement"}
+                {submitting ? "Ekleniyor..." : "Gereksinim Ekle"}
               </button>
             </form>
           </div>

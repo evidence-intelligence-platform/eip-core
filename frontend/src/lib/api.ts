@@ -1,6 +1,13 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080";
 export const INTERNAL_API_KEY = process.env.NEXT_PUBLIC_INTERNAL_API_KEY || "eif-test-internal-api-key";
 
+export interface UserAccount {
+  id: number;
+  email: string;
+  role: "employer" | "candidate" | "admin" | string;
+  created_at?: string;
+}
+
 export interface Candidate {
   id?: number;
   external_id: string;
@@ -27,6 +34,24 @@ export interface Evidence {
   created_at?: string;
 }
 
+export interface JobPosting {
+  id?: number;
+  company_id?: number;
+  company_name?: string;
+  title: string;
+  description: string;
+  status: string;
+  created_at?: string;
+}
+
+export interface JobApplication {
+  id?: number;
+  candidate_id: number;
+  job_id: number;
+  status: string;
+  created_at?: string;
+}
+
 export interface ReportData {
   candidate: Candidate;
   evidences: Evidence[];
@@ -39,10 +64,101 @@ export interface ReportData {
   };
 }
 
-const getHeaders = (extra: Record<string, string> = {}) => ({
-  "X-Internal-API-Key": INTERNAL_API_KEY,
-  ...extra,
-});
+const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
+  const headers: Record<string, string> = {
+    "X-Internal-API-Key": INTERNAL_API_KEY,
+    ...extra,
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth APIs
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function loginUser(email: string, password: string) {
+  const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+    method: "POST",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Invalid login credentials.");
+  }
+  return res.json();
+}
+
+export async function registerUser(email: string, password: string, role: string, fullName?: string) {
+  const res = await fetch(`${API_URL}/api/v1/auth/register`, {
+    method: "POST",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ email, password, role, full_name: fullName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Registration failed.");
+  }
+  return res.json();
+}
+
+export async function getMe(token: string) {
+  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
+    headers: getHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch user profile.");
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Job & Application APIs
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getJobs(): Promise<JobPosting[]> {
+  const res = await fetch(`${API_URL}/api/v1/jobs/`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch job postings");
+  return res.json();
+}
+
+export async function createJob(job: Partial<JobPosting>, token?: string): Promise<JobPosting> {
+  const res = await fetch(`${API_URL}/api/v1/jobs/`, {
+    method: "POST",
+    headers: getHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(job),
+  });
+  if (!res.ok) throw new Error("Failed to create job posting");
+  return res.json();
+}
+
+export async function getApplications(): Promise<JobApplication[]> {
+  const res = await fetch(`${API_URL}/api/v1/applications/`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch applications");
+  return res.json();
+}
+
+export async function createApplication(application: Partial<JobApplication>): Promise<JobApplication> {
+  const res = await fetch(`${API_URL}/api/v1/applications/`, {
+    method: "POST",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify(application),
+  });
+  if (!res.ok) throw new Error("Failed to submit application");
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Candidate & Evidence APIs
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function getCandidates(): Promise<Candidate[]> {
   const res = await fetch(`${API_URL}/api/v1/candidates/`, {
@@ -56,7 +172,7 @@ export async function getCandidates(): Promise<Candidate[]> {
 export async function createCandidate(candidate: Partial<Candidate>): Promise<Candidate> {
   const res = await fetch(`${API_URL}/api/v1/candidates/`, {
     method: "POST",
-    headers: getHeaders({ "Content-Type": "application/json" }),
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(candidate),
   });
   if (!res.ok) throw new Error("Failed to create candidate");
@@ -75,7 +191,7 @@ export async function getRequirements(): Promise<Requirement[]> {
 export async function createRequirement(requirement: Partial<Requirement>): Promise<Requirement> {
   const res = await fetch(`${API_URL}/api/v1/requirements/`, {
     method: "POST",
-    headers: getHeaders({ "Content-Type": "application/json" }),
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(requirement),
   });
   if (!res.ok) throw new Error("Failed to create requirement");
@@ -108,7 +224,7 @@ export async function analyzeCandidateEvidence(candidateId: string, sourceType: 
 
     const response = await fetch(`${API_URL}/api/v1/extract`, {
       method: "POST",
-      headers: getHeaders({ "Content-Type": "application/json" }),
+      headers: getHeaders(undefined, { "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
     });
 

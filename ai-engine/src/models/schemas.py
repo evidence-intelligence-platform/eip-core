@@ -35,7 +35,11 @@ class EvidencePayload(BaseModel):
         ...,
         description="Unique identifier for the candidate (from the Core Zone)."
     )
-    source_type: Literal["GITHUB", "CHATGPT", "LINKEDIN", "PDF_RESUME"] = Field(
+    source_type: Literal[
+        "GITHUB", "CHATGPT", "LINKEDIN", "PDF_RESUME", 
+        "LINKEDIN_URL", "PORTFOLIO_LINK", "CERTIFICATE_LICENSE", 
+        "CHATGPT_EXPORT", "CASE_STUDY_BLOG"
+    ] = Field(
         ...,
         description="The type of evidence source. Determines parsing context."
     )

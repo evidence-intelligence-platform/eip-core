@@ -138,6 +138,7 @@ export default function JobListingsPage() {
       });
 
       const reqId = `req_job_${selectedJob.id}`;
+      const reqDesc = selectedJob.description;
       let primaryAiResult = null;
 
       // 3. Process PDF/TXT Resume
@@ -149,26 +150,26 @@ export default function JobListingsPage() {
 
       // 4. Process LinkedIn URL
       if (linkedinUrl.trim()) {
-        await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`);
+        await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`, reqId, reqDesc);
         extraSources++;
       }
 
       // 5. Process GitHub / Portfolio Link
       if (githubUrl.trim()) {
-        await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`);
+        await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, reqId, reqDesc);
         extraSources++;
       }
 
       // 6. Process Certificate / License Link
       if (certificateLink.trim()) {
-        await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`);
+        await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`, reqId, reqDesc);
         extraSources++;
       }
 
       // 7. Process ChatGPT Export JSON
       if (chatgptJsonFile) {
         const text = await chatgptJsonFile.text();
-        await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000));
+        await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), reqId, reqDesc);
         extraSources++;
       }
 

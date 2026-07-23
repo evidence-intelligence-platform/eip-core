@@ -238,7 +238,7 @@ export async function getCandidateEvidences(external_id: string): Promise<Eviden
   return res.json();
 }
 
-export async function analyzeCandidateEvidence(candidateId: string, sourceType: string, rawData: string) {
+export async function analyzeCandidateEvidence(candidateId: string, sourceType: string, rawData: string, requirementId: string, requirementDescription: string) {
   try {
     const payload = {
       payload: {
@@ -248,8 +248,8 @@ export async function analyzeCandidateEvidence(candidateId: string, sourceType: 
         consent_verified: true,
       },
       requirement: {
-        id: "req_demo_1",
-        description: "Must know React state management",
+        id: requirementId,
+        description: requirementDescription,
       },
     };
 

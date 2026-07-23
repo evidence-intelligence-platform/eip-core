@@ -29,3 +29,6 @@ python-multipart>=0.0.12,<1.0.0
 
 # PDF Parsing
 PyPDF2>=3.0.1,<4.0.0
+
+# Testing
+pytest>=8.0.0,<9.0.0

@@ -116,7 +116,13 @@ export default function CandidateEvidenceHub() {
       setAccSuccess(null);
 
       const rawText = `ACCOMPLISHMENT [${accCategory}]: ${accTitle}. Details: ${accContent}. Proof Link: ${accProofLink}`;
-      await analyzeCandidateEvidence(candidateExtId, "CASE_STUDY_BLOG", rawText);
+      await analyzeCandidateEvidence(
+        candidateExtId, 
+        "CASE_STUDY_BLOG", 
+        rawText,
+        "req_general_accomplishment",
+        "Must be a verifiable professional accomplishment or case study."
+      );
 
       const newEntry: AccomplishmentEntry = {
         id: `acc_${Date.now()}`,

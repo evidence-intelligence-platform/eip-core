@@ -191,8 +191,11 @@ export default function JobListingsPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
-      {/* Header */}
+    <div className="min-h-screen bg-black text-slate-200 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-black to-black -z-20 pointer-events-none" />
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 -z-10 mix-blend-screen pointer-events-none" />
+      <div className="space-y-8 max-w-6xl mx-auto py-12 px-4 relative">
+        {/* Header */}
       <div className="text-center space-y-3 border-b border-zinc-800 pb-8">
         <h1 className="text-4xl font-extrabold text-white tracking-tight">
           Evrensel Meslek İlanları & <span className="text-blue-500">Kanıt Portalı</span>
@@ -243,7 +246,7 @@ export default function JobListingsPage() {
           {filteredJobs.map((job) => (
             <div
               key={job.id}
-              className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 hover:border-zinc-700 transition shadow-lg"
+              className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-5 hover:border-white/20 transition-all duration-500 shadow-2xl group"
             >
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -260,7 +263,7 @@ export default function JobListingsPage() {
 
                 <button
                   onClick={() => handleOpenApplyModal(job)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2"
+                  className="px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl text-sm transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/25 flex items-center justify-center gap-2"
                 >
                   <span>🚀</span> İlana Başvur & Kanıtları Yükle &rarr;
                 </button>
@@ -276,8 +279,18 @@ export default function JobListingsPage() {
 
       {/* Apply Modal */}
       {selectedJob && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl max-w-xl w-full space-y-6 shadow-2xl my-8">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-zinc-950/90 border border-white/10 p-8 rounded-3xl max-w-xl w-full space-y-6 shadow-2xl my-8 relative overflow-hidden">
+            {submitting && (
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-10 flex flex-col items-center justify-center space-y-5 overflow-hidden rounded-3xl">
+                    <div className="absolute left-0 top-0 w-full h-1/2 bg-gradient-to-b from-transparent via-blue-500/30 to-transparent animate-scanning pointer-events-none" />
+                    <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin shadow-[0_0_15px_rgba(59,130,246,0.5)] relative z-20" />
+                    <div className="text-center relative z-20">
+                      <p className="text-white font-bold animate-pulse text-lg tracking-wide">🧠 Yapay Zeka Çapraz Sorgusu Sürüyor...</p>
+                      <p className="text-xs text-blue-300 mt-2 font-medium">Lütfen bekleyin, kanıtlarınız Gemini 2.5 Flash ile analiz ediliyor.</p>
+                    </div>
+                </div>
+            )}
             <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
               <div>
                 <h3 className="text-xl font-bold text-white">Çoklu Kanıt Destekli İş Başvurusu</h3>
@@ -348,10 +361,11 @@ export default function JobListingsPage() {
                   <input
                     type="text"
                     required
+                    disabled={submitting}
                     value={candidateName}
                     onChange={(e) => setCandidateName(e.target.value)}
                     placeholder="Örn: Jane Doe"
-                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition"
+                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
 
@@ -361,8 +375,8 @@ export default function JobListingsPage() {
                     📄 Özgeçmiş / CV / Belge Dosyası (PDF veya TXT)
                   </label>
                   <div
-                    onClick={() => resumeInputRef.current?.click()}
-                    className="p-5 border-2 border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition"
+                    onClick={() => !submitting && resumeInputRef.current?.click()}
+                    className={`p-5 border-2 border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition ${submitting ? 'opacity-50 pointer-events-none' : ''}`}
                   >
                     <input
                       ref={resumeInputRef}
@@ -397,10 +411,11 @@ export default function JobListingsPage() {
                     </label>
                     <input
                       type="url"
+                      disabled={submitting}
                       value={linkedinUrl}
                       onChange={(e) => setLinkedinUrl(e.target.value)}
                       placeholder="https://linkedin.com/in/aday-profil-adi"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -411,10 +426,11 @@ export default function JobListingsPage() {
                     </label>
                     <input
                       type="url"
+                      disabled={submitting}
                       value={certificateLink}
                       onChange={(e) => setCertificateLink(e.target.value)}
                       placeholder="https://drive.google.com/sertifikam-ehliyetim"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -425,10 +441,11 @@ export default function JobListingsPage() {
                     </label>
                     <input
                       type="url"
+                      disabled={submitting}
                       value={githubUrl}
                       onChange={(e) => setGithubUrl(e.target.value)}
                       placeholder="https://portfoyum.com veya https://github.com/proje"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -446,8 +463,9 @@ export default function JobListingsPage() {
                     />
                     <button
                       type="button"
+                      disabled={submitting}
                       onClick={() => jsonInputRef.current?.click()}
-                      className="w-full py-2 px-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg text-xs text-zinc-300 text-left transition flex items-center justify-between"
+                      className="w-full py-2 px-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg text-xs text-zinc-300 text-left transition flex items-center justify-between disabled:opacity-50"
                     >
                       <span>{chatgptJsonFile ? `🤖 ${chatgptJsonFile.name}` : "ChatGPT export conversations.json yükle..."}</span>
                       <span className="text-[10px] text-blue-400 font-semibold">Gözat</span>
@@ -481,9 +499,9 @@ export default function JobListingsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow disabled:opacity-50"
+                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg disabled:opacity-50"
                   >
-                    {submitting ? "Kanıtlar Analiz Ediliyor..." : "Başvuruyu ve Tüm Kanıtları Gönder"}
+                    {submitting ? "Analiz Ediliyor..." : "Başvuruyu ve Tüm Kanıtları Gönder"}
                   </button>
                 </div>
               </form>
@@ -491,6 +509,7 @@ export default function JobListingsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

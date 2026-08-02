@@ -16,10 +16,48 @@
   --color-surface: var(--surface);
   --color-border: var(--border-color);
   --font-sans: var(--font-inter);
+  
+  --animate-fade-in-up: fade-in-up 0.8s ease-out forwards;
+  --animate-glow: glow 2s ease-in-out infinite alternate;
+  --animate-pulse-slow: pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scanning: scanning 2.5s ease-in-out infinite;
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 10px -5px rgba(59, 130, 246, 0.3);
+  }
+  to {
+    box-shadow: 0 0 25px 5px rgba(59, 130, 246, 0.6), 0 0 5px 1px rgba(16, 185, 129, 0.4);
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; transform: scale(0.99); }
+}
+
+@keyframes scanning {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
+  overflow-x: hidden;
 }

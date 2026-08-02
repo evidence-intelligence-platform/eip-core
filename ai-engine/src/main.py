@@ -190,6 +190,13 @@ def extract_evidence(
     - evidence_pointer: Direct reference to the evidence source
     """
     try:
+        if extract_req.payload.source_type == "CHATGPT_EXPORT":
+            import json
+            try:
+                json.loads(extract_req.payload.raw_data)
+            except json.JSONDecodeError:
+                raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
+
         result = llm_service.extract_evidence(extract_req)
 
         # Persist the result for audit trail and future report generation
@@ -198,6 +205,7 @@ def extract_evidence(
             requirement_external_id=extract_req.requirement.id,
             source_type=extract_req.payload.source_type,
             status=result.status,
+            confidence_score=result.confidence_score,
             reasoning=result.reasoning,
             evidence_pointer=result.evidence_pointer,
         )
@@ -288,6 +296,13 @@ async def extract_evidence_from_file(
             ),
         )
 
+        if request.payload.source_type == "CHATGPT_EXPORT":
+            import json
+            try:
+                json.loads(request.payload.raw_data)
+            except json.JSONDecodeError:
+                raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
+
         result = llm_service.extract_evidence(request)
 
         db_evidence = Evidence(
@@ -295,6 +310,7 @@ async def extract_evidence_from_file(
             requirement_external_id=request.requirement.id,
             source_type=request.payload.source_type,
             status=result.status,
+            confidence_score=result.confidence_score,
             reasoning=result.reasoning,
             evidence_pointer=result.evidence_pointer,
         )

@@ -88,7 +88,11 @@ export default function EmployerDashboard() {
       await fetchData();
     } catch (err: unknown) {
       if (err instanceof Error) {
-        alert(`Güncelleme Hatası: ${err.message}`);
+        if (err.message.includes("409")) {
+          setError("Bu başvuru durumu daha önce değiştirilmiş! Lütfen sayfayı yenileyin.");
+        } else {
+          setError(`Güncelleme Hatası: ${err.message}`);
+        }
       }
     }
   };
@@ -117,8 +121,10 @@ export default function EmployerDashboard() {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
-      {/* Employer Header */}
+    <div className="min-h-screen bg-black text-slate-200">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-900/20 via-black to-black -z-10 pointer-events-none" />
+      <div className="space-y-8 max-w-6xl mx-auto py-12 px-4 relative">
+        {/* Employer Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
@@ -170,7 +176,7 @@ export default function EmployerDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         {/* Create New Job Posting Section (3 Cols) */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-6 shadow-2xl hover:border-white/20 transition-all duration-500">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">➕</span>
@@ -195,10 +201,11 @@ export default function EmployerDashboard() {
                 <input
                   type="text"
                   required
+                  disabled={submittingJob}
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   placeholder="Örn: Acme Sağlık A.Ş."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                 />
               </div>
 
@@ -210,10 +217,11 @@ export default function EmployerDashboard() {
                   <input
                     type="text"
                     required
+                    disabled={submittingJob}
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
                     placeholder="Örn: Kıdemli Uzman Doktor / Makam Şoförü"
-                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
 
@@ -223,8 +231,9 @@ export default function EmployerDashboard() {
                   </label>
                   <select
                     value={category}
+                    disabled={submittingJob}
                     onChange={(e) => setCategory(e.target.value as ProfessionCategory)}
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   >
                     <option value="HEALTHCARE">🩺 Sağlık & Tıp (Doktor, Hemşire)</option>
                     <option value="TECHNOLOGY">🤖 Teknoloji & Yapay Zeka</option>
@@ -243,17 +252,18 @@ export default function EmployerDashboard() {
                 <textarea
                   required
                   rows={5}
+                  disabled={submittingJob}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Pozisyonun detaylarını, aranan sertifikaları, çalışma şartlarını ve beklentilerinizi ayrıntılı yazın..."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submittingJob}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl text-xs transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submittingJob ? "İlan Yayınlanıyor..." : "➕ İlanı Tüm Sektörlerde Yayınla & Aday Başvurularını Topla"}
               </button>
@@ -263,7 +273,7 @@ export default function EmployerDashboard() {
 
         {/* Active Applications Review & Approval Panel (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-5 shadow-2xl hover:border-white/20 transition-all duration-500">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <span>📥</span> Gelen Aday Başvuruları
@@ -283,7 +293,7 @@ export default function EmployerDashboard() {
             ) : (
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                 {applications.map((app) => (
-                  <div key={app.id} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
+                  <div key={app.id} className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-4 hover:bg-white/5 transition-all duration-300 group">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white">Başvuru #{app.id}</span>
                       <span
@@ -310,26 +320,29 @@ export default function EmployerDashboard() {
                     </div>
 
                     {/* Status Update Buttons */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-zinc-900">
-                      <button
-                        onClick={() => handleUpdateStatus(app.id!, "accepted")}
-                        className="flex-1 py-1.5 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded-lg text-[11px] font-semibold transition"
-                      >
-                        Kabul Et ✅
-                      </button>
-                      <button
-                        onClick={() => handleUpdateStatus(app.id!, "declined")}
-                        className="flex-1 py-1.5 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg text-[11px] font-semibold transition"
-                      >
-                        Reddet ❌
-                      </button>
-                    </div>
+                    {(app.status === "pending" || app.status === "reviewing") && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-zinc-900">
+                        <button
+                          onClick={() => handleUpdateStatus(app.id!, "accepted")}
+                          className="flex-1 py-1.5 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded-lg text-[11px] font-semibold transition"
+                        >
+                          Kabul Et ✅
+                        </button>
+                        <button
+                          onClick={() => handleUpdateStatus(app.id!, "declined")}
+                          className="flex-1 py-1.5 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg text-[11px] font-semibold transition"
+                        >
+                          Reddet ❌
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

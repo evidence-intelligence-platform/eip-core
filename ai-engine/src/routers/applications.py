@@ -78,6 +78,9 @@ def update_application_status(
     if not application:
         raise HTTPException(status_code=404, detail=f"Application ID {app_id} not found.")
 
+    if application.status in ["accepted", "declined"]:
+        raise HTTPException(status_code=409, detail="Application already processed. Cannot update status again.")
+
     application.status = status_update.status
     session.add(application)
     session.commit()

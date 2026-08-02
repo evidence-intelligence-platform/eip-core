@@ -157,8 +157,10 @@ export default function CandidateEvidenceHub() {
   };
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-8 px-4">
-      {/* Candidate Header */}
+    <div className="min-h-screen bg-black text-slate-200">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-emerald-900/20 via-black to-black -z-10 pointer-events-none" />
+      <div className="space-y-8 max-w-6xl mx-auto py-12 px-4 relative">
+        {/* Candidate Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
@@ -226,7 +228,7 @@ export default function CandidateEvidenceHub() {
         {/* Left Column: Accomplishments & Case Studies + CV Upload (3 Cols) */}
         <div className="lg:col-span-3 space-y-6">
           {/* Publish Case Study / Accomplishment Section */}
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-6 shadow-2xl hover:border-white/20 transition-all duration-500">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🏆</span>
@@ -251,8 +253,9 @@ export default function CandidateEvidenceHub() {
                   </label>
                   <select
                     value={accCategory}
+                    disabled={publishingAcc}
                     onChange={(e) => setAccCategory(e.target.value as ProfessionCategory)}
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   >
                     <option value="HEALTHCARE">🩺 Sağlık & Tıp (Doktor, Hemşire)</option>
                     <option value="TECHNOLOGY">🤖 Teknoloji & Yapay Zeka</option>
@@ -270,10 +273,11 @@ export default function CandidateEvidenceHub() {
                   <input
                     type="text"
                     required
+                    disabled={publishingAcc}
                     value={accTitle}
                     onChange={(e) => setAccTitle(e.target.value)}
                     placeholder="Örn: 10 Yıllık Makam Şoförlüğü & İleri Sürüş Sertifikaları"
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -285,10 +289,11 @@ export default function CandidateEvidenceHub() {
                 <textarea
                   required
                   rows={4}
+                  disabled={publishingAcc}
                   value={accContent}
                   onChange={(e) => setAccContent(e.target.value)}
                   placeholder="Başarınızı, tamamladığınız projeyi, cerrahi ameliyat sayınızı, ehliyet sınıfınızı veya mesleki deneyiminizi detaylandırın..."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
                 />
               </div>
 
@@ -298,17 +303,18 @@ export default function CandidateEvidenceHub() {
                 </label>
                 <input
                   type="url"
+                  disabled={publishingAcc}
                   value={accProofLink}
                   onChange={(e) => setAccProofLink(e.target.value)}
                   placeholder="https://drive.google.com/sertifikam veya https://github.com/projem"
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition"
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={publishingAcc}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50"
+                className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl text-xs transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 flex items-center justify-center"
               >
                 {publishingAcc ? "AI Analizi Yapılıyor..." : "🏆 Başarı Vakasını AI İle Doğrula & Portföye Ekle"}
               </button>
@@ -321,7 +327,7 @@ export default function CandidateEvidenceHub() {
               <h3 className="text-base font-bold text-white tracking-tight">Yayınlanan Başarı Case Study&apos;leri ({accomplishments.length})</h3>
               <div className="space-y-3">
                 {accomplishments.map((acc) => (
-                  <div key={acc.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-2 hover:border-zinc-700 transition">
+                  <div key={acc.id} className="bg-black/40 border border-white/5 p-5 rounded-2xl space-y-2 hover:bg-white/5 transition-all duration-300">
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-white text-sm">{acc.title}</h4>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
@@ -346,7 +352,13 @@ export default function CandidateEvidenceHub() {
           )}
 
           {/* Main CV Upload Box */}
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-5 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-6 shadow-2xl hover:border-white/20 transition-all duration-500 relative overflow-hidden">
+            {analyzing && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-4 rounded-3xl">
+                    <div className="w-12 h-12 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <p className="text-white font-bold animate-pulse">Özgeçmiş AI Analizi Sürüyor...</p>
+                </div>
+            )}
             <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
               <span className="text-xl">📄</span>
               <h2 className="text-lg font-bold text-white">Özgeçmiş / CV Yükle & AI Analizi</h2>
@@ -359,8 +371,9 @@ export default function CandidateEvidenceHub() {
                 </label>
                 <select
                   value={selectedJobId}
+                  disabled={analyzing}
                   onChange={(e) => setSelectedJobId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500 transition"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500 transition disabled:opacity-50"
                 >
                   <option value="">— Genel Özgeçmiş Değerlendirmesi —</option>
                   {jobs.map((j) => (
@@ -414,7 +427,7 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={analyzing || !file}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow disabled:opacity-50"
+                className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl text-xs transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 flex items-center justify-center"
               >
                 {analyzing ? "AI Analizi Yapılıyor..." : "🔍 Özgeçmişimi AI İle Analiz Et"}
               </button>
@@ -425,7 +438,7 @@ export default function CandidateEvidenceHub() {
         {/* Right Column: Applications & Verified Evidences (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Applications Status Card */}
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-5 shadow-2xl hover:border-white/20 transition-all duration-500">
             <h2 className="text-lg font-bold text-white flex items-center justify-between border-b border-zinc-800 pb-3">
               <span>📌 Başvurularımın Durumu</span>
               <span className="text-xs bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-full font-mono">
@@ -448,7 +461,7 @@ export default function CandidateEvidenceHub() {
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                 {applications.map((app) => (
-                  <div key={app.id} className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1.5">
+                  <div key={app.id} className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-1.5 hover:bg-white/5 transition-all duration-300">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-white">{getJobTitle(app.job_id)}</p>
                       <span
@@ -471,7 +484,7 @@ export default function CandidateEvidenceHub() {
           </div>
 
           {/* Evidence Stats Card */}
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-3 shadow-lg">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-5 shadow-2xl hover:border-white/20 transition-all duration-500">
             <h3 className="text-sm font-bold text-white">📊 Doğrulanmış AI Kanıtlarım</h3>
             <p className="text-xs text-zinc-400 leading-relaxed">
               Veritabanında sizin için kayıtlı toplam <strong className="text-emerald-400">{evidences.length} adet</strong> yetkinlik kanıtı bulunmaktadır.
@@ -484,6 +497,7 @@ export default function CandidateEvidenceHub() {
             </Link>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

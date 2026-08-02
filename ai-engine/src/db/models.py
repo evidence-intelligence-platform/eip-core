@@ -101,6 +101,7 @@ class Evidence(SQLModel, table=True):
     requirement_external_id: str = Field(index=True)
     source_type: str
     status: str  # VERIFIED, INSUFFICIENT EVIDENCE, CONTRADICTION
+    confidence_score: int | None = None
     reasoning: str
     evidence_pointer: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -119,7 +120,7 @@ class ExplainabilityReport(SQLModel, table=True):
 class ConsentLog(SQLModel, table=True):
     """Immutable audit record for privacy consent events."""
     id: int | None = Field(default=None, primary_key=True)
-    candidate_id: str = Field(index=True)
+    candidate_external_id: str = Field(index=True)
     consent_granted: bool
     consent_timestamp: datetime = Field(default_factory=datetime.utcnow)
     ip_address: str | None = None

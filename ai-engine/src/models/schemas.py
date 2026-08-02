@@ -96,6 +96,12 @@ class ExtractionResult(BaseModel):
         ...,
         description="The definitive, evidence-based status of the extraction."
     )
+    confidence_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Confidence score of the evaluation from 0 to 100. Below 85 should require human review."
+    )
     reasoning: str = Field(
         ...,
         min_length=10,

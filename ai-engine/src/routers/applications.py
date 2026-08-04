@@ -37,24 +37,11 @@ def create_application(app_in: JobApplication, session: Session = Depends(get_se
     """Submits a candidate application for a specific job posting."""
     candidate = session.exec(select(Candidate).where(Candidate.id == app_in.candidate_id)).first()
     if not candidate:
-        # Fallback to first available candidate or create auto candidate
-        candidate = session.exec(select(Candidate)).first()
-        if not candidate:
-            candidate = Candidate(external_id=f"cand_auto_{app_in.candidate_id}", name="Applicant Candidate", consent_granted=True)
-            session.add(candidate)
-            session.commit()
-            session.refresh(candidate)
-        if candidate.id is not None:
-            app_in.candidate_id = candidate.id
+        raise HTTPException(status_code=404, detail=f"Candidate ID {app_in.candidate_id} not found.")
 
     job = session.exec(select(JobPosting).where(JobPosting.id == app_in.job_id)).first()
     if not job:
-        # Fallback to first available job if ID not found
-        job = session.exec(select(JobPosting)).first()
-        if not job:
-            raise HTTPException(status_code=404, detail=f"No active job postings found.")
-        if job.id is not None:
-            app_in.job_id = job.id
+        raise HTTPException(status_code=404, detail=f"Job Posting ID {app_in.job_id} not found.")
 
     application = JobApplication(
         candidate_id=app_in.candidate_id,

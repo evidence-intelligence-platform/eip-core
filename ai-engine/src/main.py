@@ -155,10 +155,9 @@ app.include_router(requirements.router)
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM Service Initialization
 # ─────────────────────────────────────────────────────────────────────────────
-# The service is typed as BaseLLMService (the abstract interface).
-# This allows swapping the underlying provider (Gemini → OpenAI → Local)
-# without changing any business logic. Ref: 02_FOUNDATION_MANIFEST.md Section 2.
-llm_service: BaseLLMService = GeminiLLMService()
+def get_llm_service() -> BaseLLMService:
+    """Dependency injection for the LLM Service."""
+    return GeminiLLMService()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -173,10 +172,11 @@ llm_service: BaseLLMService = GeminiLLMService()
     tags=["extraction"],
 )
 @limiter.limit("15/minute")
-def extract_evidence(
+async def extract_evidence(
     request: Request,
     extract_req: ExtractRequest,
     session: Session = Depends(get_session),
+    llm_service: BaseLLMService = Depends(get_llm_service),
 ) -> ExtractionResult:
     """
     Core extraction endpoint. Accepts a structured evidence payload and a requirement.
@@ -197,7 +197,7 @@ def extract_evidence(
             except json.JSONDecodeError:
                 raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
 
-        result = llm_service.extract_evidence(extract_req)
+        result = await llm_service.extract_evidence(extract_req)
 
         # Persist the result for audit trail and future report generation
         db_evidence = Evidence(
@@ -246,6 +246,7 @@ async def extract_evidence_from_file(
     ),
     file: UploadFile = File(..., description="PDF or plain text file to analyze."),
     session: Session = Depends(get_session),
+    llm_service: BaseLLMService = Depends(get_llm_service),
 ) -> ExtractionResult:
     """
     File-based extraction endpoint. Accepts a PDF or TXT file upload.
@@ -303,7 +304,7 @@ async def extract_evidence_from_file(
             except json.JSONDecodeError:
                 raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
 
-        result = llm_service.extract_evidence(request)
+        result = await llm_service.extract_evidence(request)
 
         db_evidence = Evidence(
             candidate_external_id=request.payload.candidate_id,

@@ -15,19 +15,30 @@ NOTE: These tests require a valid GEMINI_API_KEY and make live API calls.
   To run: python -m pytest tests/test_extractor.py -v
 """
 
+import pytest
 from src.models.schemas import EvidencePayload, ExtractRequest, Requirement
+
+@pytest.fixture
+def anyio_backend():
+    return 'asyncio'
+
 
 
 def _get_llm():
     """Helper to initialize LLM service, skipping tests if API key not set."""
+    import os
     from src.services.llm_service import GeminiLLMService
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or api_key == "test-placeholder-key-not-used-in-unit-tests":
+        return None
     try:
         return GeminiLLMService()
     except ValueError:
         return None
 
 
-def test_react_context_verification():
+@pytest.mark.anyio
+async def test_react_context_verification():
     """
     RULE: If explicit, observable evidence is present → status must be VERIFIED.
     Evidence: Raw code using React useContext() hook directly.
@@ -46,14 +57,15 @@ def test_react_context_verification():
         ),
         requirement=Requirement(id="req_1", description="Must know React state management")
     )
-    res = llm.extract_evidence(req)
+    res = await llm.extract_evidence(req)
     assert res.status == "VERIFIED", f"Expected VERIFIED, got: {res.status}"
     assert res.evidence_pointer is not None, "Evidence pointer must not be None for VERIFIED status."
     assert len(res.reasoning) >= 10, "Reasoning must not be empty."
     print("✅ TEST PASSED: React Context verified with evidence.")
 
 
-def test_insufficient_evidence():
+@pytest.mark.anyio
+async def test_insufficient_evidence():
     """
     RULE: If evidence is absent → status must be INSUFFICIENT EVIDENCE (no guessing).
     Evidence: A hello world print statement, completely unrelated to React.
@@ -72,12 +84,13 @@ def test_insufficient_evidence():
         ),
         requirement=Requirement(id="req_2", description="Must know React state management")
     )
-    res = llm.extract_evidence(req)
+    res = await llm.extract_evidence(req)
     assert res.status == "INSUFFICIENT EVIDENCE", f"Expected INSUFFICIENT EVIDENCE, got: {res.status}"
     print("✅ TEST PASSED: Refused to guess on missing evidence.")
 
 
-def test_no_psychoanalysis_on_leadership():
+@pytest.mark.anyio
+async def test_no_psychoanalysis_on_leadership():
     """
     RULE: Personality self-declarations are NOT evidence. (AI_AGENT_RULES.md Rule 4)
     "Leadership" must be proven by tangible professional interactions, not self-claims.
@@ -96,7 +109,7 @@ def test_no_psychoanalysis_on_leadership():
         ),
         requirement=Requirement(id="req_3", description="Leadership skills")
     )
-    res = llm.extract_evidence(req)
+    res = await llm.extract_evidence(req)
     assert res.status == "INSUFFICIENT EVIDENCE", (
         f"Expected INSUFFICIENT EVIDENCE for a self-declaration, got: {res.status}. "
         f"Reasoning: {res.reasoning}"

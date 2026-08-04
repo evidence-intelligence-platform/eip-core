@@ -73,7 +73,7 @@ class GeminiLLMService(BaseLLMService):
         8. Provide a 'confidence_score' from 0 to 100 representing how certain you are of your conclusion based purely on the evidence.
         """
 
-    def extract_evidence(self, request: ExtractRequest) -> ExtractionResult:
+    async def extract_evidence(self, request: ExtractRequest) -> ExtractionResult:
         """
         Calls the Gemini LLM to evaluate a single evidence payload against a requirement.
 
@@ -97,7 +97,7 @@ class GeminiLLMService(BaseLLMService):
         </evidence>
         """
 
-        response = self.client.models.generate_content(
+        response = await self.client.aio.models.generate_content(
             model=self.model_name,
             contents=prompt,
             config={

@@ -11,38 +11,42 @@ No external API keys required.
 To run: python -m pytest tests/test_routers.py -v
 """
 
+import uuid
+
 
 def test_create_and_list_candidates(client):
     """Verify that creating a candidate persists it and the list endpoint returns it."""
+    ext_id = f"cand_router_test_{uuid.uuid4()}"
     resp = client.post("/api/v1/candidates/", json={
-        "external_id": "cand_router_test_1",
+        "external_id": ext_id,
         "name": "Jane Doe"
     })
     assert resp.status_code == 200, f"Create failed: {resp.json()}"
     data = resp.json()
     assert data["name"] == "Jane Doe"
-    assert data["external_id"] == "cand_router_test_1"
+    assert data["external_id"] == ext_id
 
     resp = client.get("/api/v1/candidates/")
     assert resp.status_code == 200
-    assert any(c["external_id"] == "cand_router_test_1" for c in resp.json())
+    assert any(c["external_id"] == ext_id for c in resp.json())
     print("✅ TEST PASSED: Candidate create and list.")
 
 
 def test_create_and_list_requirements(client):
     """Verify that creating a requirement persists it and the list endpoint returns it."""
+    ext_id = f"req_router_test_{uuid.uuid4()}"
     resp = client.post("/api/v1/requirements/", json={
-        "external_id": "req_router_test_1",
+        "external_id": ext_id,
         "description": "Python Expert"
     })
     assert resp.status_code == 200, f"Create failed: {resp.json()}"
     data = resp.json()
     assert data["description"] == "Python Expert"
-    assert data["external_id"] == "req_router_test_1"
+    assert data["external_id"] == ext_id
 
     resp = client.get("/api/v1/requirements/")
     assert resp.status_code == 200
-    assert any(r["external_id"] == "req_router_test_1" for r in resp.json())
+    assert any(r["external_id"] == ext_id for r in resp.json())
     print("✅ TEST PASSED: Requirement create and list.")
 
 

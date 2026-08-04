@@ -27,7 +27,7 @@ class BaseLLMService(ABC):
     """
 
     @abstractmethod
-    def extract_evidence(self, request: ExtractRequest) -> ExtractionResult:
+    async def extract_evidence(self, request: ExtractRequest) -> ExtractionResult:
         """
         Analyzes a candidate's evidence payload against a single requirement.
 

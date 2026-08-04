@@ -30,18 +30,17 @@ def test_extract_evidence_saves_to_db(client):
     import src.main as main_module
     from src.models.schemas import ExtractionResult
 
-    original_llm_service = main_module.llm_service
-
     class MockLLMService:
         """Deterministic mock — always returns VERIFIED for testability."""
-        def extract_evidence(self, request):
+        async def extract_evidence(self, request):
             return ExtractionResult(
                 status="VERIFIED",
+                confidence_score=99,
                 reasoning="Mock: Candidate demonstrated the required skill clearly in the provided data.",
                 evidence_pointer="mock://evidence/pointer/123"
             )
 
-    main_module.llm_service = MockLLMService()
+    main_module.app.dependency_overrides[main_module.get_llm_service] = lambda: MockLLMService()
 
     try:
         payload = {
@@ -61,7 +60,7 @@ def test_extract_evidence_saves_to_db(client):
 
     finally:
         # Always restore — test isolation
-        main_module.llm_service = original_llm_service
+        main_module.app.dependency_overrides.clear()
 
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.json()}"
     data = response.json()

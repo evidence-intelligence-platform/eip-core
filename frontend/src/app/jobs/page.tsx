@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   getJobs,
-  getCandidates,
+  getCandidate,
   createCandidate,
   createApplication,
   analyzeCandidateFile,
@@ -38,7 +38,8 @@ export default function JobListingsPage() {
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
   const [candidateName, setCandidateName] = useState("");
-  const [consentVerified, setConsentVerified] = useState(true);
+  // Unticked by default: a pre-ticked box is not valid explicit consent.
+  const [consentVerified, setConsentVerified] = useState(false);
 
   // Multi-source evidence inputs
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -48,11 +49,13 @@ export default function JobListingsPage() {
   const [certificateLink, setCertificateLink] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [submitSuccessData, setSubmitSuccessData] = useState<{
     appId: number;
     candidateExtId: string;
     aiResult?: any;
     extraSourcesCount: number;
+    failedSources: string[];
   } | null>(null);
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
@@ -62,12 +65,10 @@ export default function JobListingsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [jobsData, candsData] = await Promise.all([
-        getJobs().catch(() => []),
-        getCandidates().catch(() => []),
-      ]);
+      // Only jobs are public. The candidate list used to be fetched here just
+      // to de-duplicate on apply — that shipped every visitor the full roster.
+      const jobsData = await getJobs();
       setJobs(jobsData);
-      setCandidates(candsData);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -90,6 +91,7 @@ export default function JobListingsPage() {
 
   const handleOpenApplyModal = (job: JobPosting) => {
     setSelectedJob(job);
+    setFormError(null);
     setSubmitSuccessData(null);
     setResumeFile(null);
     setLinkedinUrl("");
@@ -106,33 +108,48 @@ export default function JobListingsPage() {
     if (!selectedJob) return;
 
     if (!resumeFile && !linkedinUrl && !githubUrl && !chatgptJsonFile && !certificateLink) {
-      alert("⚠️ Lütfen başvuruyu tamamlamak için en az bir kanıt belgesi (CV, Sertifika, Ehliyet/Belge veya Bağlantı) ekleyin.");
+      setFormError("Başvurunuzu tamamlamak için en az bir belge veya bağlantı ekleyin (CV, sertifika, ehliyet, portföy).");
       return;
     }
 
     if (!consentVerified) {
-      alert("⚠️ Zero Trust Consent Gate Uyarısı: Kanıtlarınızın ve yapay zeka çapraz sorgulamasının yapılması için rıza seçeneğini onaylamalısınız.");
+      setFormError("Belgelerinizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
       return;
     }
 
     try {
       setSubmitting(true);
+      setFormError(null);
       let extraSources = 0;
 
       // 1. Ensure Candidate record exists or create one
-      const extId = `cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : Date.now()}`;
-      let cand = candidates.find((c) => c.external_id === extId);
-      if (!cand) {
-        cand = await createCandidate({
-          external_id: extId,
-          name: candidateName || user?.email?.split("@")[0] || "Aday Kullanıcı",
-          consent_granted: true,
-        });
+      // A Date.now() identity would orphan the application from the user's
+      // record, so signing in is required before applying.
+      if (!user?.email) {
+        setFormError("Başvuru yapmak için giriş yapmanız gerekiyor.");
+        setSubmitting(false);
+        return;
+      }
+      const extId = `cand_${user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const cand = await createCandidate({
+        external_id: extId,
+        name: candidateName || user.email.split("@")[0] || "Aday Kullanıcı",
+        consent_granted: consentVerified,
+      }).catch(async (err) => {
+        // Already registered from an earlier application — fetch that one record.
+        // (Scanning the whole roster here would re-open the leak this change closed.)
+        const existing = await getCandidate(extId).catch(() => null);
+        if (existing) return existing;
+        throw err;
+      });
+
+      if (!cand.id) {
+        throw new Error("Aday kaydınız oluşturulamadı, lütfen tekrar deneyin.");
       }
 
       // 2. Submit Job Application
       const appRecord = await createApplication({
-        candidate_id: cand.id || 1,
+        candidate_id: cand.id,
         job_id: selectedJob.id!,
         status: "reviewing",
       });
@@ -142,35 +159,46 @@ export default function JobListingsPage() {
       let primaryAiResult = null;
 
       // 3. Process PDF/TXT Resume
+      // Only count sources the engine actually accepted, so the success
+      // screen cannot claim evidence that failed to process.
+      const failedSources: string[] = [];
       if (resumeFile) {
-        const extractRes = await analyzeCandidateFile(extId, reqId, resumeFile);
-        if (extractRes.success) primaryAiResult = extractRes.data;
-        extraSources++;
+        const extractRes = await analyzeCandidateFile(extId, reqId, resumeFile, consentVerified);
+        if (extractRes.success) {
+          primaryAiResult = extractRes.data;
+          extraSources++;
+        } else {
+          failedSources.push("CV");
+        }
       }
 
       // 4. Process LinkedIn URL
       if (linkedinUrl.trim()) {
-        await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`, reqId, reqDesc);
-        extraSources++;
+        const r = await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`, reqId, reqDesc, consentVerified);
+        if (r.success) extraSources++;
+        else failedSources.push("LinkedIn");
       }
 
       // 5. Process GitHub / Portfolio Link
       if (githubUrl.trim()) {
-        await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, reqId, reqDesc);
-        extraSources++;
+        const r = await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, reqId, reqDesc, consentVerified);
+        if (r.success) extraSources++;
+        else failedSources.push("Portfolyo bağlantısı");
       }
 
       // 6. Process Certificate / License Link
       if (certificateLink.trim()) {
-        await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`, reqId, reqDesc);
-        extraSources++;
+        const r = await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`, reqId, reqDesc, consentVerified);
+        if (r.success) extraSources++;
+        else failedSources.push("Sertifika/belge bağlantısı");
       }
 
       // 7. Process ChatGPT Export JSON
       if (chatgptJsonFile) {
         const text = await chatgptJsonFile.text();
-        await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), reqId, reqDesc);
-        extraSources++;
+        const r = await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), reqId, reqDesc, consentVerified);
+        if (r.success) extraSources++;
+        else failedSources.push("Sohbet dışa aktarımı");
       }
 
       setSubmitSuccessData({
@@ -178,13 +206,12 @@ export default function JobListingsPage() {
         candidateExtId: extId,
         aiResult: primaryAiResult,
         extraSourcesCount: extraSources,
+        failedSources,
       });
 
       await fetchData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        alert(`Başvuru Hatası: ${err.message}`);
-      }
+      setFormError(err instanceof Error ? err.message : "Başvurunuz gönderilemedi, lütfen tekrar deneyin.");
     } finally {
       setSubmitting(false);
     }
@@ -226,8 +253,15 @@ export default function JobListingsPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-950/40 border border-red-800 text-red-300 text-sm rounded-xl">
-          ❌ {error}
+        <div role="alert" className="p-4 bg-red-950/40 border border-red-800 text-red-300 text-sm rounded-xl flex flex-wrap items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={fetchData}
+            className="px-3 py-1.5 bg-red-900/60 hover:bg-red-900 border border-red-700 text-red-100 rounded-lg text-xs font-semibold transition"
+          >
+            Tekrar Dene
+          </button>
         </div>
       )}
 
@@ -238,7 +272,11 @@ export default function JobListingsPage() {
         </div>
       ) : filteredJobs.length === 0 ? (
         <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl space-y-3">
-          <p className="text-zinc-400 text-base">Bu kategoride henüz aktif bir iş ilanı yayınlanmadı.</p>
+          <p className="text-zinc-400 text-base">
+            {error
+              ? "İlanlar şu anda görüntülenemiyor."
+              : "Bu kategoride henüz aktif bir iş ilanı yayınlanmadı."}
+          </p>
           <p className="text-xs text-zinc-500">Farklı bir meslek kategorisi seçerek arama yapabilirsiniz.</p>
         </div>
       ) : (
@@ -308,11 +346,16 @@ export default function JobListingsPage() {
               <div className="space-y-5 py-2">
                 <div className="p-4 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-sm rounded-xl space-y-2">
                   <p className="font-bold text-base flex items-center gap-2">
-                    <span>✅</span> Başvurunuz {submitSuccessData.extraSourcesCount} Kanıt Kaynağı İle Alındı! (Başvuru ID #{submitSuccessData.appId})
+                    <span>✅</span> Başvurunuz alındı — {submitSuccessData.extraSourcesCount} kanıt kaynağı işlendi. (Başvuru No #{submitSuccessData.appId})
                   </p>
                   <p className="text-xs text-zinc-300">
-                    Belgeleriniz ve eklenen tüm mesleki kanıtlarınız işverenin değerlendirme ekranına aktarıldı.
+                    Belgeleriniz işverenin değerlendirme ekranına aktarıldı.
                   </p>
+                  {submitSuccessData.failedSources.length > 0 && (
+                    <p className="text-xs text-amber-300 border-t border-emerald-800/60 pt-2">
+                      Şu kaynaklar işlenemedi: {submitSuccessData.failedSources.join(", ")}. Başvurunuz geçerli; bu belgeleri profilinizden tekrar yükleyebilirsiniz.
+                    </p>
+                  )}
                 </div>
 
                 {submitSuccessData.aiResult && (
@@ -342,8 +385,40 @@ export default function JobListingsPage() {
                   </Link>
                 </div>
               </div>
+            ) : !user?.email ? (
+              <div className="space-y-4 py-2">
+                <div className="p-4 bg-blue-950/30 border border-blue-800/50 rounded-xl text-sm text-zinc-300">
+                  <p className="font-semibold text-white mb-1">Başvurmak için giriş yapın</p>
+                  <p className="text-xs leading-relaxed">
+                    Belgelerinizin başvurunuza bağlanabilmesi için hesabınıza giriş yapmanız gerekiyor.
+                    Hesabınız yoksa kayıt olmanız birkaç saniye sürer.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href="/login"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition"
+                  >
+                    Giriş Yap
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
+                  >
+                    Hesap Oluştur
+                  </Link>
+                </div>
+              </div>
             ) : (
               <form onSubmit={handleApplySubmit} className="space-y-5">
+                {formError && (
+                  <div
+                    role="alert"
+                    className="p-3 bg-red-950/40 border border-red-800 text-red-300 text-xs rounded-xl"
+                  >
+                    {formError}
+                  </div>
+                )}
                 {/* Critical AI Cross-Verification Warning Banner */}
                 <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-xl space-y-2 text-xs text-amber-200">
                   <div className="flex items-center gap-2 font-bold text-amber-400">
@@ -401,7 +476,7 @@ export default function JobListingsPage() {
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       🚀 Başvuruyu Güçlendirici Mesleki Kanıtlar (İsteğe Bağlı)
                     </span>
-                    <span className="text-[10px] text-emerald-400 font-mono">+ Skor Bonusu</span>
+                    <span className="text-[10px] text-zinc-500">Doğrulanabilir belgeler skorunuzu güçlendirir</span>
                   </div>
 
                   {/* LinkedIn URL Input */}
@@ -483,7 +558,7 @@ export default function JobListingsPage() {
                       className="mt-1 accent-blue-500 w-4 h-4"
                     />
                     <span className="text-xs text-zinc-300 leading-normal">
-                      <strong className="text-blue-400">Zero Trust Aday Rızası & Çapraz Sorgu Onayı:</strong> Sunmuş olduğum tüm belgelerin dürüst ve doğru olduğunu; belgelerimin, LinkedIn/ChatGPT verilerimin işveren adına Yapay Zeka Çapraz Sorgulamasına (AI Cross-Verification) ve Karakter/Yetkinlik Analizine tabi tutulmasını beyan ve kabul ediyorum.
+                      <strong className="text-blue-400">Belgelerimin incelenmesine onay veriyorum.</strong> Yüklediğim belgelerin bana ait ve doğru olduğunu; başvurduğum ilan kapsamında yapay zeka tarafından değerlendirilip sonucun işverenle paylaşılmasını kabul ediyorum. Onayınız olmadan hiçbir belgeniz işlenmez.
                     </span>
                   </label>
                 </div>

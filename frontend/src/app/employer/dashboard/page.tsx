@@ -10,6 +10,7 @@ import {
   JobPosting,
   JobApplication,
   ProfessionCategory,
+  ApiError,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -35,8 +36,8 @@ export default function EmployerDashboard() {
       setLoading(true);
       setError(null);
       const [jobsData, appsData] = await Promise.all([
-        getJobs().catch(() => []),
-        getApplications().catch(() => []),
+        getJobs(),
+        getApplications(),
       ]);
       setJobs(jobsData);
       setApplications(appsData);
@@ -87,12 +88,13 @@ export default function EmployerDashboard() {
       await updateApplicationStatus(appId, newStatus);
       await fetchData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        if (err.message.includes("409")) {
-          setError("Bu başvuru durumu daha önce değiştirilmiş! Lütfen sayfayı yenileyin.");
-        } else {
-          setError(`Güncelleme Hatası: ${err.message}`);
-        }
+      // The message never contained "409" — the status lives on ApiError.
+      if (err instanceof ApiError && err.status === 409) {
+        setError("Bu başvurunun durumu daha önce değiştirilmiş. Lütfen sayfayı yenileyin.");
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Başvuru durumu güncellenemedi.");
       }
     }
   };
@@ -309,18 +311,28 @@ export default function EmployerDashboard() {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-400">Aday ID: #{app.candidate_id}</span>
-                      <Link
-                        href={`/candidates/cand_${app.candidate_id}`}
-                        className="text-blue-400 hover:underline font-semibold"
-                      >
-                        📊 Raporu İncele &rarr;
-                      </Link>
+                    <div className="flex justify-between items-center gap-3 text-xs">
+                      {/* The name and identity now come from the API; building
+                          "cand_{id}" here pointed at a record that never existed. */}
+                      <span className="text-zinc-300 font-medium truncate">
+                        {app.candidate_name || `Aday #${app.candidate_id}`}
+                      </span>
+                      {app.candidate_external_id ? (
+                        <Link
+                          href={`/reports/${app.candidate_external_id}`}
+                          className="text-blue-400 hover:underline font-semibold shrink-0"
+                        >
+                          Raporu İncele →
+                        </Link>
+                      ) : (
+                        <span className="text-zinc-500 shrink-0">Rapor hazır değil</span>
+                      )}
                     </div>
 
                     {/* Status Update Buttons */}
-                    {(app.status === "pending" || app.status === "reviewing") && (
+                    {/* "pending" is not a status the backend ever produces —
+                        new applications default to "submitted". */}
+                    {["submitted", "pending", "reviewing"].includes(app.status) && (
                       <div className="flex items-center gap-2 pt-1 border-t border-zinc-900">
                         <button
                           onClick={() => handleUpdateStatus(app.id!, "accepted")}

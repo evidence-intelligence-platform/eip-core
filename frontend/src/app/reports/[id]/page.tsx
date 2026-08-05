@@ -165,27 +165,14 @@ export default function ReportPage() {
           </div>
 
           {/* Decision Bar */}
-          <div className="pt-6 border-t border-zinc-800 flex flex-col md:flex-row items-center justify-between gap-4">
-            {decision ? (
-              <div className="w-full p-4 bg-emerald-950/40 border border-emerald-800 text-emerald-300 rounded-xl text-sm font-semibold text-center">
-                ✅ Decision Logged: <span className="uppercase">{decision}</span>
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={() => setDecision("declined")}
-                  className="w-full md:w-auto px-6 py-3 border border-red-800/60 text-red-400 hover:bg-red-950/30 rounded-xl font-semibold text-sm transition"
-                >
-                  Decline Candidate
-                </button>
-                <button
-                  onClick={() => setDecision("interview_scheduled")}
-                  className="w-full md:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-sm transition shadow"
-                >
-                  Schedule Human Interview
-                </button>
-              </>
-            )}
+          {/* Decisions belong to the employer dashboard, where they are actually
+              persisted. The buttons that used to sit here only changed local
+              state while telling the viewer the decision had been recorded —
+              and this page is linked from the candidate's own screens. */}
+          <div className="pt-6 border-t border-zinc-800 text-center">
+            <p className="text-xs text-zinc-400">
+              Bu rapor değerlendirme içindir. Başvuru kararları işveren panelinden verilir.
+            </p>
           </div>
         </>
       )}

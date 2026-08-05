@@ -19,13 +19,15 @@ export default function LoginPage() {
     try {
       setLoading(true);
       setError(null);
-      await login(email, password);
-      router.push("/employer/dashboard");
+      const profile = await login(email, password);
+      // Route by role: a job seeker landing on the employer dashboard hits a
+      // "this area is for employers" wall right after signing in.
+      router.push(profile.role === "employer" ? "/employer/dashboard" : "/candidate/hub");
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Invalid email or password.");
+        setError("E-posta veya şifre hatalı.");
       }
     } finally {
       setLoading(false);
@@ -35,9 +37,9 @@ export default function LoginPage() {
   return (
     <div className="max-w-md mx-auto my-12 p-8 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold text-white tracking-tight">Sign In to EIP</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Giriş Yap</h1>
         <p className="text-sm text-zinc-400">
-          Enter your credentials to access the Evidence Intelligence Platform.
+          Hesabınıza girerek başvurularınızı ve ilanlarınızı yönetin.
         </p>
       </div>
 
@@ -50,21 +52,21 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-            Email Address
+            E-posta Adresi
           </label>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="employer@acme.com"
+            placeholder="ornek@sirket.com"
             className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 transition"
           />
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-            Password
+            Şifre
           </label>
           <input
             type="password"
@@ -81,14 +83,14 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm transition shadow disabled:opacity-50"
         >
-          {loading ? "Signing in..." : "Sign In &rarr;"}
+          {loading ? "Giriş yapılıyor…" : "Giriş Yap →"}
         </button>
       </form>
 
       <div className="text-center text-xs text-zinc-500 pt-2 border-t border-zinc-800">
-        Don&apos;t have an account?{" "}
+        Hesabınız yok mu?{" "}
         <Link href="/register" className="text-blue-400 hover:underline font-semibold">
-          Create Account
+          Hesap Oluştur
         </Link>
       </div>
     </div>

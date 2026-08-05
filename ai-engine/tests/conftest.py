@@ -28,7 +28,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 TEST_API_KEY = "eif-test-internal-api-key"
 
-os.environ.setdefault("GEMINI_API_KEY", "test-placeholder-key-not-used-in-unit-tests")
+# setdefault is not enough: CI passes GEMINI_API_KEY through from a secret, so
+# when the secret is unset the variable exists as an empty string and the
+# placeholder is never applied — GeminiLLMService then refuses to start.
+if not os.environ.get("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = "test-placeholder-key-not-used-in-unit-tests"
 os.environ["INTERNAL_API_KEY"] = TEST_API_KEY
 os.environ["DEBUG"] = "false"
 # Point the *production* engine at the same in-memory database as the tests.

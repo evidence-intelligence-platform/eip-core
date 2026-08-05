@@ -16,7 +16,7 @@ export default function Navbar() {
           <span>Evidence Intelligence Platform</span>
         </Link>
 
-        <div className="flex items-center space-x-6 text-sm">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
           {/* Always Visible Job Listings */}
           <Link href="/jobs" className="hover:text-blue-400 transition-colors font-medium flex items-center gap-1">
             <span>💼</span> İş İlanları
@@ -48,7 +48,7 @@ export default function Navbar() {
 
           {/* User Auth Section */}
           {user ? (
-            <div className="flex items-center space-x-3 pl-4 border-l border-zinc-800">
+            <div className="flex flex-wrap items-center gap-3 md:pl-4 md:border-l md:border-zinc-800">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono text-zinc-300">{user.email}</span>
                 <span
@@ -69,7 +69,7 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center space-x-3 pl-4 border-l border-zinc-800">
+            <div className="flex flex-wrap items-center gap-3 md:pl-4 md:border-l md:border-zinc-800">
               <Link
                 href="/login"
                 className="px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-white transition"

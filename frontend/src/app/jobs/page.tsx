@@ -438,7 +438,7 @@ export default function JobListingsPage() {
                     value={candidateName}
                     onChange={(e) => setCandidateName(e.target.value)}
                     placeholder="Örn: Jane Doe"
-                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
 
@@ -488,7 +488,7 @@ export default function JobListingsPage() {
                       value={linkedinUrl}
                       onChange={(e) => setLinkedinUrl(e.target.value)}
                       placeholder="https://linkedin.com/in/aday-profil-adi"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -503,7 +503,7 @@ export default function JobListingsPage() {
                       value={certificateLink}
                       onChange={(e) => setCertificateLink(e.target.value)}
                       placeholder="https://drive.google.com/sertifikam-ehliyetim"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -518,7 +518,7 @@ export default function JobListingsPage() {
                       value={githubUrl}
                       onChange={(e) => setGithubUrl(e.target.value)}
                       placeholder="https://portfoyum.com veya https://github.com/proje"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -556,7 +556,18 @@ export default function JobListingsPage() {
                       className="mt-1 accent-blue-500 w-4 h-4"
                     />
                     <span className="text-xs text-zinc-300 leading-normal">
-                      <strong className="text-blue-400">Belgelerimin incelenmesine onay veriyorum.</strong> Yüklediğim belgelerin bana ait ve doğru olduğunu; başvurduğum ilan kapsamında yapay zeka tarafından değerlendirilip sonucun işverenle paylaşılmasını kabul ediyorum. Onayınız olmadan hiçbir belgeniz işlenmez.
+                      <strong className="text-blue-400">Belgelerimin incelenmesine onay veriyorum.</strong>{" "}
+                      Yüklediğim belgeler bana aittir ve doğrudur. Başvurduğum ilan
+                      kapsamında değerlendirilip sonucun işverenle paylaşılmasını kabul
+                      ediyorum. Belgelerimin metni, değerlendirme için Google&apos;ın
+                      yapay zeka servisine (yurt dışına) aktarılır.{" "}
+                      <Link
+                        href="/kvkk"
+                        target="_blank"
+                        className="text-blue-400 underline underline-offset-2 hover:text-blue-300"
+                      >
+                        KVKK aydınlatma metni
+                      </Link>
                     </span>
                   </label>
                 </div>

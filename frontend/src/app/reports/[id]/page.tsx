@@ -44,21 +44,21 @@ export default function ReportPage() {
           href={`/candidates/${candidateId}`}
           className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
         >
-          &larr; Back to Candidate Profile
+          ← Aday Profiline Dön
         </Link>
-        <span className="text-xs font-mono text-zinc-500">EXPLAINABILITY REPORT ID: EXP-{candidateId}</span>
+        <span className="text-xs font-mono text-zinc-500">RAPOR NO: EXP-{candidateId}</span>
       </div>
 
       {/* Header Title */}
       <div className="text-center space-y-2">
         <span className="text-xs font-mono font-semibold text-blue-400 uppercase tracking-widest bg-blue-950/40 border border-blue-800/40 px-3 py-1 rounded-full">
-          Evidence Intelligence Platform Analysis
+          Kanıt Değerlendirme Raporu
         </span>
         <h1 className="text-3xl font-bold tracking-tight text-white">
-          Candidate Match & Explainability Report
+          Aday Uyum ve Gerekçe Raporu
         </h1>
         <p className="text-zinc-400 text-sm">
-          Candidate: <span className="font-semibold text-zinc-200">{report?.candidate?.name || candidateId}</span> (ID: <span className="font-mono text-zinc-300">{candidateId}</span>)
+          Aday: <span className="font-semibold text-zinc-200">{report?.candidate?.name || candidateId}</span> (Kayıt: <span className="font-mono text-zinc-300">{candidateId}</span>)
         </p>
       </div>
 
@@ -76,7 +76,7 @@ export default function ReportPage() {
           {/* Executive Match Score & Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
             <div className="flex flex-col items-center justify-center p-4 border-r-0 md:border-r border-zinc-800 space-y-2">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Evidence Verified Match Score</span>
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Belgeyle Doğrulanmış Uyum Oranı</span>
               <div className="text-5xl font-extrabold text-blue-400 font-mono">
                 {report?.summary.score}%
               </div>
@@ -86,34 +86,34 @@ export default function ReportPage() {
             </div>
 
             <div className="col-span-2 space-y-3 flex flex-col justify-center">
-              <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Executive Overview</h3>
+              <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Özet Değerlendirme</h3>
               <p className="text-sm text-zinc-300 leading-relaxed">
                 {report?.summary.score && report.summary.score >= 50
-                  ? `Candidate ${report.candidate.name} has demonstrated verifiable evidence for key engineering requirements. Proven technical capability detected without subjective bias.`
+                  ? `${report.candidate.name}, ilanın temel gereksinimleri için doğrulanabilir belge sundu. Değerlendirme yalnızca sunulan kanıtlara dayanmaktadır.`
                   : report?.summary.total === 0
-                  ? `No evidence extractions have been run yet for candidate ${candidateId}. Please submit raw evidence payloads or PDF resumes in the Evidence Hub.`
-                  : `Candidate ${report?.candidate.name} has unverified claims or insufficient evidence for critical requirements. Further human interview probing is recommended.`}
+                  ? `Bu aday için henüz belge değerlendirmesi yapılmadı. Aday panelinden özgeçmiş, sertifika veya belge yüklenebilir.`
+                  : `${report?.candidate.name} için bazı gereksinimlerde belge yetersiz kaldı veya doğrulanamadı. Görüşmede bu başlıkların sorulması önerilir.`}
               </p>
               <div className="flex flex-wrap gap-4 text-xs font-mono text-zinc-400 pt-1">
                 <span>Verified: <strong className="text-emerald-400">{report?.summary.verified}</strong></span>
                 <span>Insufficient: <strong className="text-amber-400">{report?.summary.insufficient}</strong></span>
-                <span>Contradictions: <strong className="text-red-400">{report?.summary.contradictions}</strong></span>
+                <span>Çelişki: <strong className="text-red-400">{report?.summary.contradictions}</strong></span>
               </div>
             </div>
           </div>
 
           {/* Breakdown per requirement */}
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white tracking-tight">Requirement-by-Requirement Evidence Breakdown</h2>
+            <h2 className="text-xl font-bold text-white tracking-tight">Gereksinim Bazında Değerlendirme</h2>
 
             {report?.evidences.length === 0 ? (
               <div className="p-8 text-center bg-zinc-900/40 border border-zinc-800 rounded-xl space-y-4">
-                <p className="text-zinc-400 text-sm">No evaluated evidence records available for this report.</p>
+                <p className="text-zinc-400 text-sm">Bu aday için henüz değerlendirilmiş bir belge bulunmuyor.</p>
                 <Link
                   href="/candidate/hub"
                   className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition"
                 >
-                  Go to Evidence Hub &rarr;
+                  Aday Paneline Git →
                 </Link>
               </div>
             ) : (
@@ -125,7 +125,7 @@ export default function ReportPage() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-zinc-500">[{index + 1}] REQUIREMENT:</span>
+                        <span className="text-xs font-mono text-zinc-500">[{index + 1}] GEREKSİNİM:</span>
                         <span className="font-semibold text-zinc-200 text-sm">{e.requirement_external_id}</span>
                       </div>
                       <span
@@ -137,25 +137,25 @@ export default function ReportPage() {
                             : "bg-amber-950/40 text-amber-400 border border-amber-800/60"
                         }`}
                       >
-                        {e.status} {e.status === "VERIFIED" ? "✅" : e.status === "CONTRADICTION" ? "❌" : "⚠️"}
+                        {e.status === "VERIFIED" ? "Doğrulandı ✅" : e.status === "CONTRADICTION" ? "Çelişki ❌" : "Yetersiz Belge ⚠️"}
                       </span>
                     </div>
 
                     <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-800/60 space-y-1">
                       <strong className="text-xs font-semibold text-blue-400 uppercase tracking-wider block">
-                        AI Reasoning & Evaluation Trace
+                        Değerlendirme Gerekçesi
                       </strong>
                       <p className="text-sm text-zinc-300 leading-relaxed">{e.reasoning}</p>
                     </div>
 
                     {e.evidence_pointer ? (
                       <div className="flex items-start gap-3 text-xs bg-zinc-950/60 p-3 rounded border border-zinc-800">
-                        <span className="font-mono text-zinc-500 uppercase tracking-wider shrink-0">EVIDENCE POINTER:</span>
+                        <span className="font-mono text-zinc-500 uppercase tracking-wider shrink-0">DAYANAK:</span>
                         <span className="font-mono text-blue-400 break-all">{e.evidence_pointer}</span>
                       </div>
                     ) : e.status === "INSUFFICIENT EVIDENCE" ? (
                       <div className="text-xs p-3 border border-amber-800/40 bg-amber-950/20 text-amber-300 rounded-lg">
-                        💡 <strong>INTERVIEW PROMPT:</strong> Ask candidate to present tangible work samples or live codebase diffs addressing this requirement.
+                        💡 <strong>Görüşme önerisi:</strong> Adaydan bu başlıkla ilgili somut bir çalışma örneği, belge veya referans göstermesini isteyin.
                       </div>
                     ) : null}
                   </div>

@@ -9,6 +9,8 @@ export interface UserAccount {
   email: string;
   role: "employer" | "candidate" | "admin" | string;
   created_at?: string;
+  /** Server-owned identity. Never build this client-side. */
+  candidate_external_id?: string | null;
 }
 
 export interface Candidate {
@@ -37,14 +39,12 @@ export interface Evidence {
   created_at?: string;
 }
 
-export type ProfessionCategory =
-  | "ALL"
-  | "HEALTHCARE"
-  | "TECHNOLOGY"
-  | "TRANSPORTATION"
-  | "SERVICES"
-  | "GASTRONOMY"
-  | "CONSTRUCTION";
+/**
+ * Category keys are defined in lib/categories.ts (the single source of truth,
+ * mirrored by the backend column). Kept as a plain string so adding a sector
+ * does not require touching this file.
+ */
+export type ProfessionCategory = string;
 
 export interface AccomplishmentEntry {
   id?: string;
@@ -63,7 +63,7 @@ export interface JobPosting {
   company_name?: string;
   title: string;
   description: string;
-  category?: ProfessionCategory | string;
+  category: ProfessionCategory | string;
   status: string;
   created_at?: string;
 }
@@ -92,12 +92,24 @@ export interface ReportData {
   };
 }
 
+/**
+ * The engine now authenticates the *user*, not just the proxy, so every
+ * call needs the token. AuthContext keeps this in sync with localStorage
+ * rather than each caller threading a token argument through.
+ */
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
 const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
   const headers: Record<string, string> = {
     ...extra,
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  const bearer = token ?? authToken;
+  if (bearer) {
+    headers["Authorization"] = `Bearer ${bearer}`;
   }
   return headers;
 };

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { CATEGORIES, type CategoryKey } from "@/lib/categories";
 import {
   getJobs,
   getCandidate,
@@ -15,15 +16,6 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
-const CATEGORIES: { key: ProfessionCategory; label: string; icon: string }[] = [
-  { key: "ALL", label: "Tüm Sektörler & Meslekler", icon: "🌐" },
-  { key: "HEALTHCARE", label: "Sağlık & Tıp (Doktor, Hemşire)", icon: "🩺" },
-  { key: "TECHNOLOGY", label: "Teknoloji & Yapay Zeka", icon: "🤖" },
-  { key: "TRANSPORTATION", label: "Ulaşım & Lojistik (Şoför, Kurye)", icon: "🚗" },
-  { key: "SERVICES", label: "Ev Hizmetleri & Bakım", icon: "🧹" },
-  { key: "GASTRONOMY", label: "Gastronomi & Mutfak (Şef)", icon: "🍳" },
-  { key: "CONSTRUCTION", label: "İnşaat & Mimarlık", icon: "🏗️" },
-];
 
 export default function JobListingsPage() {
   const { user } = useAuth();
@@ -33,7 +25,7 @@ export default function JobListingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Category Filter
-  const [selectedCategory, setSelectedCategory] = useState<ProfessionCategory>("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("ALL");
 
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -86,7 +78,9 @@ export default function JobListingsPage() {
 
   const filteredJobs = jobs.filter((j) => {
     if (selectedCategory === "ALL") return true;
-    return j.category === selectedCategory || j.title.toLowerCase().includes(selectedCategory.toLowerCase());
+    // Real column now; the old title.includes() fallback never matched a
+    // Turkish job title against an English category key.
+    return j.category === selectedCategory;
   });
 
   const handleOpenApplyModal = (job: JobPosting) => {
@@ -123,14 +117,18 @@ export default function JobListingsPage() {
       let extraSources = 0;
 
       // 1. Ensure Candidate record exists or create one
-      // A Date.now() identity would orphan the application from the user's
-      // record, so signing in is required before applying.
-      if (!user?.email) {
-        setFormError("Başvuru yapmak için giriş yapmanız gerekiyor.");
+      // Identity comes from the server (/auth/me); building it here produced
+      // a record the employer's report link could never resolve.
+      if (!user?.candidate_external_id) {
+        setFormError(
+          user
+            ? "Bu hesap bir aday hesabı değil. Başvurmak için aday hesabıyla giriş yapın."
+            : "Başvuru yapmak için giriş yapmanız gerekiyor."
+        );
         setSubmitting(false);
         return;
       }
-      const extId = `cand_${user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const extId = user.candidate_external_id;
       const cand = await createCandidate({
         external_id: extId,
         name: candidateName || user.email.split("@")[0] || "Aday Kullanıcı",

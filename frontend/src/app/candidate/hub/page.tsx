@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
   ApiError,
   getJobs,
@@ -37,7 +38,7 @@ export default function CandidateEvidenceHub() {
 
   // New Accomplishment / Case Study state
   const [accTitle, setAccTitle] = useState("");
-  const [accCategory, setAccCategory] = useState<ProfessionCategory>("HEALTHCARE");
+  const [accCategory, setAccCategory] = useState<string>("OTHER");
   const [accContent, setAccContent] = useState("");
   const [accProofLink, setAccProofLink] = useState("");
   const [publishingAcc, setPublishingAcc] = useState(false);
@@ -46,11 +47,10 @@ export default function CandidateEvidenceHub() {
   const [accSuccess, setAccSuccess] = useState<string | null>(null);
   const [accError, setAccError] = useState<string | null>(null);
 
-  // No "cand_demo" fallback: writing evidence under a shared demo identity
-  // mixes unrelated people's records together.
-  const candidateExtId = user?.email
-    ? `cand_${user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
-    : "";
+  // The server owns this identity (returned by /auth/me). Deriving it from
+  // the e-mail address produced a different value than the stored one, which
+  // is what broke the evidence chain between candidate and employer.
+  const candidateExtId = user?.candidate_external_id ?? "";
 
   const fetchData = async () => {
     try {
@@ -310,12 +310,16 @@ export default function CandidateEvidenceHub() {
                     onChange={(e) => setAccCategory(e.target.value as ProfessionCategory)}
                     className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   >
-                    <option value="HEALTHCARE">🩺 Sağlık & Tıp (Doktor, Hemşire)</option>
-                    <option value="TECHNOLOGY">🤖 Teknoloji & Yapay Zeka</option>
-                    <option value="TRANSPORTATION">🚗 Ulaşım & Lojistik (Şoför, Kurye)</option>
-                    <option value="SERVICES">🧹 Ev Hizmetleri & Bakım</option>
-                    <option value="GASTRONOMY">🍳 Gastronomi & Mutfak (Şef)</option>
-                    <option value="CONSTRUCTION">🏗️ İnşaat & Mimarlık</option>
+                    {SELECTABLE_CATEGORIES.map((c) => (
+
+                      <option key={c.key} value={c.key}>
+
+                        {c.icon} {c.label}
+
+                      </option>
+
+                    ))}
+
                   </select>
                 </div>
 

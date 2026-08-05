@@ -103,20 +103,64 @@ def seed_database():
         session.commit()
 
         print("[SEED] Seeding Job Postings...")
+        # Demo data spans sectors on purpose: a platform that claims to serve
+        # every profession should not open with two software listings.
         job1 = JobPosting(
             company_id=acme.id,
-            title="Senior React Engineer",
-            description="Looking for a frontend specialist proficient in modern React, state architecture, and micro-frontends.",
-            status="active"
+            title="Kıdemli Frontend Geliştirici",
+            description="Modern React, durum yönetimi ve mikro-frontend mimarisinde deneyimli bir geliştirici arıyoruz.",
+            category="TECHNOLOGY",
+            status="active",
         )
         job2 = JobPosting(
             company_id=techwave.id,
-            title="Python AI Systems Engineer",
-            description="Seeking a backend engineer to build scalable AI services using FastAPI, PyTorch, and vector databases.",
-            status="active"
+            title="Yoğun Bakım Hemşiresi",
+            description="Yoğun bakım ünitesinde en az 2 yıl deneyimli, sertifikalı hemşire aranıyor. Vardiyalı çalışma.",
+            category="HEALTHCARE",
+            status="active",
         )
-        session.add(job1)
-        session.add(job2)
+        job3 = JobPosting(
+            company_id=acme.id,
+            title="Ağır Vasıta Şoförü (SRC Belgeli)",
+            description="Yurt içi lojistik operasyonlarında görev alacak, E sınıfı ehliyet ve SRC belgesine sahip şoför.",
+            category="TRANSPORTATION",
+            status="active",
+        )
+        job4 = JobPosting(
+            company_id=techwave.id,
+            title="Restoran Şefi",
+            description="Menü planlama, maliyet kontrolü ve mutfak ekibi yönetimi konularında deneyimli şef.",
+            category="GASTRONOMY",
+            status="active",
+        )
+        job5 = JobPosting(
+            company_id=acme.id,
+            title="Şantiye Şefi",
+            description="Konut projelerinde saha yönetimi, İSG mevzuatına hakim, inşaat mühendisi veya tekniker.",
+            category="CONSTRUCTION",
+            status="active",
+        )
+        job6 = JobPosting(
+            company_id=techwave.id,
+            title="Sınıf Öğretmeni",
+            description="İlkokul kademesinde görev alacak, formasyon sahibi öğretmen.",
+            category="EDUCATION",
+            status="active",
+        )
+        for job in (job1, job2, job3, job4, job5, job6):
+            session.add(job)
+        session.commit()
+
+        # Every posting needs a requirement the AI can evaluate against;
+        # otherwise the engine falls back to a generic "technical requirement"
+        # regardless of the profession.
+        for job in (job1, job2, job3, job4, job5, job6):
+            session.add(
+                Requirement(
+                    external_id=f"req_job_{job.id}",
+                    description=job.description,
+                )
+            )
         session.commit()
 
         print("[SEED] Seeding Job Applications...")

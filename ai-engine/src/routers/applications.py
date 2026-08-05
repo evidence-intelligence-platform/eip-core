@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 from src.db.database import get_session
 from src.db.models import Candidate, JobApplication, JobPosting
 from src.security.auth import verify_api_key
+from src.security.permissions import CurrentUser, require_employer, require_user
 
 router = APIRouter(
     prefix="/api/v1/applications",
@@ -43,14 +44,26 @@ class JobApplicationRead(BaseModel):
     candidate_name: str | None = None
 
 
-@router.get("/", response_model=list[JobApplicationRead], summary="List all job applications")
-def list_applications(session: Session = Depends(get_session)) -> list[JobApplicationRead]:
-    """Lists all submitted job applications with the applicant's identity."""
-    rows = session.exec(
-        select(JobApplication, Candidate).join(
-            Candidate, Candidate.id == JobApplication.candidate_id, isouter=True
-        )
-    ).all()
+@router.get("/", response_model=list[JobApplicationRead], summary="List job applications")
+def list_applications(
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_user),
+) -> list[JobApplicationRead]:
+    """
+    Lists job applications visible to the caller.
+
+    Previously this returned the whole table to anyone, so every candidate saw
+    every other candidate's applications and their accept/decline status.
+    """
+    query = select(JobApplication, Candidate).join(
+        Candidate, Candidate.id == JobApplication.candidate_id, isouter=True
+    )
+
+    if user.get("role") == "candidate":
+        # A candidate only ever sees their own applications.
+        query = query.where(Candidate.user_id == user.get("user_id"))
+
+    rows = session.exec(query).all()
     return [
         JobApplicationRead(
             id=app.id,
@@ -66,7 +79,11 @@ def list_applications(session: Session = Depends(get_session)) -> list[JobApplic
 
 
 @router.post("/", response_model=JobApplication, status_code=status.HTTP_201_CREATED, summary="Submit a job application")
-def create_application(app_in: JobApplication, session: Session = Depends(get_session)) -> JobApplication:
+def create_application(
+    app_in: JobApplication,
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_user),
+) -> JobApplication:
     """Submits a candidate application for a specific job posting."""
     candidate = session.exec(select(Candidate).where(Candidate.id == app_in.candidate_id)).first()
     if not candidate:
@@ -92,8 +109,13 @@ def update_application_status(
     app_id: int,
     status_update: ApplicationStatusUpdate,
     session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_employer),
 ) -> JobApplication:
-    """Updates status of a job application (e.g. accepted, declined, reviewing)."""
+    """
+    Updates status of a job application (e.g. accepted, declined, reviewing).
+
+    Employers only: a candidate could previously accept their own application.
+    """
     application = session.exec(select(JobApplication).where(JobApplication.id == app_id)).first()
     if not application:
         raise HTTPException(status_code=404, detail=f"Application ID {app_id} not found.")

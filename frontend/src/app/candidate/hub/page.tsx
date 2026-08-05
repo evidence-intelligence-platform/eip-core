@@ -27,7 +27,8 @@ export default function CandidateEvidenceHub() {
 
   // Resume Upload state
   const [selectedJobId, setSelectedJobId] = useState<string>("");
-  const [consentVerified, setConsentVerified] = useState(true);
+  // Unticked by default: a pre-ticked box is not valid explicit consent.
+  const [consentVerified, setConsentVerified] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -41,26 +42,37 @@ export default function CandidateEvidenceHub() {
   const [publishingAcc, setPublishingAcc] = useState(false);
   const [accSuccess, setAccSuccess] = useState<string | null>(null);
 
-  const candidateExtId = `cand_${user?.email ? user.email.replace(/[^a-zA-Z0-9]/g, "_") : "demo"}`;
+  // No "cand_demo" fallback: writing evidence under a shared demo identity
+  // mixes unrelated people's records together.
+  const candidateExtId = user?.email
+    ? `cand_${user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
+    : "";
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [jobsData, appsData, evData] = await Promise.all([
-        getJobs().catch(() => []),
-        getApplications().catch(() => []),
-        getCandidateEvidences(candidateExtId).catch(() => []),
+      const [jobsRes, appsRes, evRes] = await Promise.allSettled([
+        // Swallowing failures here made a broken backend look like an empty
+        // account; allSettled lets us tell the two apart below.
+        getJobs(),
+        getApplications(),
+        candidateExtId ? getCandidateEvidences(candidateExtId) : Promise.resolve([]),
       ]);
-      setJobs(jobsData);
-      setApplications(appsData);
-      setEvidences(evData);
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Veriler yüklenemedi.");
+      setJobs(jobsRes.status === "fulfilled" ? jobsRes.value : []);
+      setApplications(appsRes.status === "fulfilled" ? appsRes.value : []);
+      setEvidences(evRes.status === "fulfilled" ? evRes.value : []);
+
+      const failed = [jobsRes, appsRes, evRes].find((r) => r.status === "rejected");
+      if (failed && failed.status === "rejected") {
+        setError(
+          failed.reason instanceof Error
+            ? failed.reason.message
+            : "Bilgileriniz yüklenemedi."
+        );
       }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Veriler yüklenemedi.");
     } finally {
       setLoading(false);
     }
@@ -79,8 +91,13 @@ export default function CandidateEvidenceHub() {
     e.preventDefault();
     if (!file) return;
 
+    if (!candidateExtId) {
+      setError("Belge yüklemek için giriş yapmanız gerekiyor.");
+      return;
+    }
+
     if (!consentVerified) {
-      alert("⚠️ Zero Trust Consent Gate Uyarısı: Özgeçmişinizin AI tarafından analiz edilmesi için rıza seçeneğini onaylamalısınız.");
+      setError("Belgenizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
       return;
     }
 
@@ -89,7 +106,7 @@ export default function CandidateEvidenceHub() {
       setAnalysisResult(null);
 
       const reqId = selectedJobId ? `req_job_${selectedJobId}` : "req_general_cv";
-      const res = await analyzeCandidateFile(candidateExtId, reqId, file);
+      const res = await analyzeCandidateFile(candidateExtId, reqId, file, consentVerified);
 
       if (res.success) {
         setAnalysisResult(res.data);
@@ -115,13 +132,24 @@ export default function CandidateEvidenceHub() {
       setPublishingAcc(true);
       setAccSuccess(null);
 
-      const rawText = `ACCOMPLISHMENT [${accCategory}]: ${accTitle}. Details: ${accContent}. Proof Link: ${accProofLink}`;
-      await analyzeCandidateEvidence(
-        candidateExtId, 
-        "CASE_STUDY_BLOG", 
+      if (!candidateExtId) {
+        setError("Deneyim eklemek için giriş yapmanız gerekiyor.");
+        return;
+      }
+
+      if (!consentVerified) {
+        setError("Deneyiminizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
+        return;
+      }
+
+      const rawText = `MESLEKI DENEYIM [${accCategory}]: ${accTitle}. Ayrinti: ${accContent}. Belge/Bag: ${accProofLink}`;
+      const analysis = await analyzeCandidateEvidence(
+        candidateExtId,
+        "CASE_STUDY_BLOG",
         rawText,
         "req_general_accomplishment",
-        "Must be a verifiable professional accomplishment or case study."
+        "Doğrulanabilir bir mesleki deneyim veya iş örneği olmalıdır.",
+        consentVerified
       );
 
       const newEntry: AccomplishmentEntry = {
@@ -131,12 +159,16 @@ export default function CandidateEvidenceHub() {
         title: accTitle,
         content: accContent,
         proof_link: accProofLink,
-        verified_by_ai: true,
+        verified_by_ai: analysis.success,
         created_at: new Date().toISOString(),
       };
 
       setAccomplishments((prev) => [newEntry, ...prev]);
-      setAccSuccess("🏆 Başarı Vaka İncelemeniz Gemini AI ile analiz edildi ve portföyünüze eklendi!");
+      setAccSuccess(
+        analysis.success
+          ? "Deneyiminiz analiz edildi ve profilinize eklendi."
+          : "Deneyiminiz kaydedildi, ancak yapay zeka analizi şu anda tamamlanamadı. Daha sonra tekrar deneyebilirsiniz."
+      );
 
       setAccTitle("");
       setAccContent("");

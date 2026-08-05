@@ -20,6 +20,10 @@ const INTERNAL_KEY = process.env.EIP_INTERNAL_API_KEY || "eif-test-internal-api-
 // (cookies, browser fingerprint headers) stays on this side.
 const FORWARDED_REQUEST_HEADERS = ["content-type", "authorization"];
 
+// Long enough for a Gemini call over a PDF, short enough that a hung engine
+// does not leave the user staring at a spinner forever.
+const REQUEST_TIMEOUT_MS = 60_000;
+
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const search = req.nextUrl.search;
   // Preserve the caller's trailing slash. FastAPI declares the collection
@@ -37,21 +41,50 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   }
 
   // "manual" so an unexpected upstream redirect surfaces as a response we can
-  // forward, instead of a follow attempt that throws on an already-read body.
+  // handle here, instead of a follow attempt that throws on an already-read body.
   const init: RequestInit = { method: req.method, headers, redirect: "manual" };
+  let body: ArrayBuffer | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     // Pass the raw body through untouched so JSON and multipart uploads
     // (PDF resumes) both survive the hop.
-    init.body = await req.arrayBuffer();
+    body = await req.arrayBuffer();
+    init.body = body;
+  }
+
+  // The engine runs on a private network, so a redirect to its internal
+  // hostname is unreachable from the browser. Follow it here instead, re-using
+  // the buffered body — at most once, so a redirect loop cannot hang the route.
+  async function send(url: string, allowRedirect: boolean): Promise<Response> {
+    const res = await fetch(url, {
+      ...init,
+      ...(body === undefined ? {} : { body }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (allowRedirect && res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (location) {
+        const next = new URL(location, url);
+        if (next.origin === new URL(ENGINE_URL).origin) {
+          return send(next.toString(), false);
+        }
+      }
+    }
+    return res;
   }
 
   let upstream: Response;
   try {
-    upstream = await fetch(target, init);
-  } catch {
+    upstream = await send(target, true);
+  } catch (err) {
+    const timedOut = err instanceof DOMException && err.name === "TimeoutError";
+    console.error("[eip-proxy]", req.method, target, err);
     return NextResponse.json(
-      { detail: "AI Engine unreachable" },
-      { status: 502 },
+      {
+        detail: timedOut
+          ? "İşlem zaman aşımına uğradı. Lütfen tekrar deneyin."
+          : "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.",
+      },
+      { status: timedOut ? 504 : 502 },
     );
   }
 

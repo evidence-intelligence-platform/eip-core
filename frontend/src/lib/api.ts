@@ -98,6 +98,71 @@ const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
   return headers;
 };
 
+/** Error carrying the HTTP status, so callers can branch on it (e.g. 409). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/**
+ * Turns a failed response into a Turkish, human-readable ApiError.
+ * FastAPI validation errors put an *array* of objects in `detail`; rendering
+ * that straight into JSX is what produced "[object Object]" on screen.
+ */
+async function toApiError(res: Response, fallback: string): Promise<ApiError> {
+  const body = await res.json().catch(() => null);
+  const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : null;
+
+  let message: string | null = null;
+  if (typeof detail === "string") {
+    message = detail;
+  } else if (Array.isArray(detail)) {
+    // Pydantic reports the offending field in `loc` and an English `msg`.
+    // Name the field in Turkish rather than passing the raw validator text on.
+    const FIELD_LABELS: Record<string, string> = {
+      email: "E-posta adresi",
+      password: "Şifre",
+      full_name: "Ad soyad",
+      role: "Hesap türü",
+      title: "Başlık",
+      description: "Açıklama",
+      status: "Durum",
+      external_id: "Kayıt numarası",
+      name: "İsim",
+      candidate_id: "Aday",
+      job_id: "İlan",
+    };
+    const fields = detail
+      .map((d) => {
+        if (!d || typeof d !== "object" || !Array.isArray((d as { loc?: unknown }).loc)) return null;
+        const loc = (d as { loc: unknown[] }).loc;
+        const field = String(loc[loc.length - 1] ?? "");
+        return FIELD_LABELS[field] ?? null;
+      })
+      .filter((f): f is string => Boolean(f));
+
+    const unique = [...new Set(fields)];
+    if (unique.length === 1) message = `${unique[0]} geçersiz. Lütfen kontrol edin.`;
+    else if (unique.length > 1) message = `Şu alanları kontrol edin: ${unique.join(", ")}.`;
+  }
+
+  if (!message) {
+    if (res.status === 401 || res.status === 403) message = "Bu işlem için giriş yapmanız gerekiyor.";
+    else if (res.status === 404) message = "Aradığınız kayıt bulunamadı.";
+    else if (res.status === 409) message = "Bu kayıt daha önce işlenmiş.";
+    else if (res.status === 422) message = "Girdiğiniz bilgilerde eksik veya hatalı alan var.";
+    else if (res.status === 502 || res.status === 503) message = "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.";
+    else if (res.status >= 500) message = "Beklenmeyen bir sunucu hatası oluştu.";
+    else message = fallback;
+  }
+
+  return new ApiError(message, res.status);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth APIs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,10 +173,7 @@ export async function loginUser(email: string, password: string) {
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Invalid login credentials.");
-  }
+  if (!res.ok) throw await toApiError(res, "E-posta veya şifre hatalı.");
   return res.json();
 }
 
@@ -121,10 +183,7 @@ export async function registerUser(email: string, password: string, role: string
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password, role, full_name: fullName }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Registration failed.");
-  }
+  if (!res.ok) throw await toApiError(res, "Kayıt tamamlanamadı.");
   return res.json();
 }
 
@@ -133,7 +192,7 @@ export async function getMe(token: string) {
     headers: getHeaders(token),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch user profile.");
+  if (!res.ok) throw await toApiError(res, "Hesap bilgileriniz alınamadı.");
   return res.json();
 }
 
@@ -146,7 +205,7 @@ export async function getJobs(): Promise<JobPosting[]> {
     headers: getHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch job postings");
+  if (!res.ok) throw await toApiError(res, "İş ilanları yüklenemedi.");
   return res.json();
 }
 
@@ -156,7 +215,7 @@ export async function createJob(job: Partial<JobPosting>, token?: string): Promi
     headers: getHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify(job),
   });
-  if (!res.ok) throw new Error("Failed to create job posting");
+  if (!res.ok) throw await toApiError(res, "İlan yayınlanamadı.");
   return res.json();
 }
 
@@ -165,7 +224,7 @@ export async function getApplications(): Promise<JobApplication[]> {
     headers: getHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch applications");
+  if (!res.ok) throw await toApiError(res, "Başvurular yüklenemedi.");
   return res.json();
 }
 
@@ -175,7 +234,7 @@ export async function createApplication(application: Partial<JobApplication>): P
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(application),
   });
-  if (!res.ok) throw new Error("Failed to submit application");
+  if (!res.ok) throw await toApiError(res, "Başvurunuz gönderilemedi.");
   return res.json();
 }
 
@@ -185,7 +244,7 @@ export async function updateApplicationStatus(appId: number, status: string): Pr
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error("Failed to update application status");
+  if (!res.ok) throw await toApiError(res, "Başvuru durumu güncellenemedi.");
   return res.json();
 }
 
@@ -198,7 +257,7 @@ export async function getCandidates(): Promise<Candidate[]> {
     headers: getHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch candidates");
+  if (!res.ok) throw await toApiError(res, "Aday listesi yüklenemedi.");
   return res.json();
 }
 
@@ -208,7 +267,7 @@ export async function createCandidate(candidate: Partial<Candidate>): Promise<Ca
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(candidate),
   });
-  if (!res.ok) throw new Error("Failed to create candidate");
+  if (!res.ok) throw await toApiError(res, "Aday kaydı oluşturulamadı.");
   return res.json();
 }
 
@@ -217,7 +276,7 @@ export async function getRequirements(): Promise<Requirement[]> {
     headers: getHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch requirements");
+  if (!res.ok) throw await toApiError(res, "Gereksinimler yüklenemedi.");
   return res.json();
 }
 
@@ -227,7 +286,7 @@ export async function createRequirement(requirement: Partial<Requirement>): Prom
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(requirement),
   });
-  if (!res.ok) throw new Error("Failed to create requirement");
+  if (!res.ok) throw await toApiError(res, "Gereksinim oluşturulamadı.");
   return res.json();
 }
 
@@ -236,18 +295,27 @@ export async function getCandidateEvidences(external_id: string): Promise<Eviden
     headers: getHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch evidences");
+  if (!res.ok) throw await toApiError(res, "Kanıtlar yüklenemedi.");
   return res.json();
 }
 
-export async function analyzeCandidateEvidence(candidateId: string, sourceType: string, rawData: string, requirementId: string, requirementDescription: string) {
+export async function analyzeCandidateEvidence(
+  candidateId: string,
+  sourceType: string,
+  rawData: string,
+  requirementId: string,
+  requirementDescription: string,
+  // The user's actual consent, not a hardcoded true — sending true regardless
+  // of what the person ticked makes the consent gate meaningless.
+  consentVerified: boolean
+) {
   try {
     const payload = {
       payload: {
         candidate_id: candidateId,
         source_type: sourceType,
         raw_data: rawData,
-        consent_verified: true,
+        consent_verified: consentVerified,
       },
       requirement: {
         id: requirementId,
@@ -262,7 +330,7 @@ export async function analyzeCandidateEvidence(candidateId: string, sourceType: 
     });
 
     if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      throw await toApiError(response, "Kanıt analizi tamamlanamadı.");
     }
 
     const data = await response.json();
@@ -271,20 +339,21 @@ export async function analyzeCandidateEvidence(candidateId: string, sourceType: 
     if (error instanceof Error) {
       return { success: false, error: error.message };
     }
-    return { success: false, error: "Unknown error" };
+    return { success: false, error: "Bilinmeyen bir hata oluştu." };
   }
 }
 
 export async function analyzeCandidateFile(
   candidateId: string,
   requirementId: string,
-  file: File
+  file: File,
+  consentVerified: boolean
 ) {
   try {
     const formData = new FormData();
     formData.append("candidate_id", candidateId);
     formData.append("requirement_id", requirementId);
-    formData.append("consent_verified", "true");
+    formData.append("consent_verified", String(consentVerified));
     formData.append("source_type", "PDF_RESUME");
     formData.append("file", file);
 
@@ -295,8 +364,7 @@ export async function analyzeCandidateFile(
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || `API returned ${response.status}`);
+      throw await toApiError(response, "Dosya analizi tamamlanamadı.");
     }
 
     const data = await response.json();
@@ -305,18 +373,20 @@ export async function analyzeCandidateFile(
     if (error instanceof Error) {
       return { success: false, error: error.message };
     }
-    return { success: false, error: "Unknown error" };
+    return { success: false, error: "Bilinmeyen bir hata oluştu." };
   }
 }
 
 export async function getReportData(candidateId: string): Promise<ReportData> {
-  const candidates = await getCandidates().catch(() => []);
-  const candidate = candidates.find((c) => c.external_id === candidateId) || {
-    external_id: candidateId,
-    name: candidateId,
-  };
+  const candidates = await getCandidates();
+  const candidate = candidates.find((c) => c.external_id === candidateId);
+  // No silent stand-in: fabricating a candidate here is what produced the
+  // "ghost profile" — a 0% report for someone whose record was never found.
+  if (!candidate) {
+    throw new ApiError("Bu adaya ait kayıt bulunamadı.", 404);
+  }
 
-  const evidences = await getCandidateEvidences(candidateId).catch(() => []);
+  const evidences = await getCandidateEvidences(candidateId);
 
   const total = evidences.length;
   const verified = evidences.filter((e) => e.status === "VERIFIED").length;

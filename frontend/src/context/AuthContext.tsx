@@ -7,8 +7,11 @@ interface AuthContextType {
   user: UserAccount | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, role: string, fullName?: string) => Promise<void>;
+  // login/register return the profile: callers need the role to route the user
+  // to the right home, and reading useAuth().user right after awaiting would
+  // still see the stale value from this render's closure.
+  login: (email: string, password: string) => Promise<UserAccount>;
+  register: (email: string, password: string, role: string, fullName?: string) => Promise<UserAccount>;
   logout: () => void;
 }
 
@@ -49,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role: data.role,
     }));
     setUser(profile);
+    return profile;
   };
 
   const register = async (email: string, password: string, role: string, fullName?: string) => {
@@ -62,6 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role: data.role,
     }));
     setUser(profile);
+    return profile;
   };
 
   const logout = () => {

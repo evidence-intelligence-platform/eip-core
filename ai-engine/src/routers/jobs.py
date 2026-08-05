@@ -13,10 +13,12 @@ from sqlmodel import Session, select
 
 from src.db.database import get_session
 from src.db.models import Company, JobPosting
+from src.security.auth import verify_api_key
 
 router = APIRouter(
     prefix="/api/v1/jobs",
     tags=["job-postings"],
+    dependencies=[Depends(verify_api_key)],
 )
 
 

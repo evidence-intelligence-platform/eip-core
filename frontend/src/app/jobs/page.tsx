@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
 import { CATEGORIES, type CategoryKey } from "@/lib/categories";
 import {
   getJobs,
@@ -445,7 +446,7 @@ export default function JobListingsPage() {
                 {/* Main Resume Upload */}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-                    📄 Özgeçmiş / CV / Belge Dosyası (PDF veya TXT)
+                    📄 Özgeçmiş, sertifika, ehliyet veya diploma
                   </label>
                   <div
                     onClick={() => !submitting && resumeInputRef.current?.click()}
@@ -454,15 +455,27 @@ export default function JobListingsPage() {
                     <input
                       ref={resumeInputRef}
                       type="file"
-                      accept=".pdf,.txt"
+                      accept={DOCUMENT_ACCEPT}
                       className="hidden"
-                      onChange={(e) => e.target.files?.[0] && setResumeFile(e.target.files[0])}
+                      onChange={(e) => {
+                        const picked = e.target.files?.[0];
+                        if (!picked) return;
+                        // Fail here rather than after a 5 MB upload round-trip.
+                        const problem = validateDocument(picked);
+                        if (problem) {
+                          setFormError(problem);
+                          e.target.value = "";
+                          return;
+                        }
+                        setFormError(null);
+                        setResumeFile(picked);
+                      }}
                     />
                     {resumeFile ? (
                       <p className="text-emerald-400 text-sm font-semibold">📄 {resumeFile.name} ({(resumeFile.size / 1024).toFixed(1)} KB)</p>
                     ) : (
                       <p className="text-zinc-400 text-xs">
-                        Dosyanızı seçmek için <span className="text-blue-400 underline">tıklayın</span> (.pdf veya .txt)
+                        Dosyanızı seçmek için <span className="text-blue-400 underline">tıklayın</span> — {DOCUMENT_HINT}
                       </p>
                     )}
                   </div>
@@ -559,7 +572,7 @@ export default function JobListingsPage() {
                       <strong className="text-blue-400">Belgelerimin incelenmesine onay veriyorum.</strong>{" "}
                       Yüklediğim belgeler bana aittir ve doğrudur. Başvurduğum ilan
                       kapsamında değerlendirilip sonucun işverenle paylaşılmasını kabul
-                      ediyorum. Belgelerimin metni, değerlendirme için Google&apos;ın
+                      ediyorum. Belgelerimin metni ve görüntüsü, değerlendirme için Google&apos;ın
                       yapay zeka servisine (yurt dışına) aktarılır.{" "}
                       <Link
                         href="/kvkk"

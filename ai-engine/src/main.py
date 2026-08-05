@@ -21,6 +21,7 @@ AUDIT FIXES (2026-07-22):
 
 from contextlib import asynccontextmanager
 
+from pydantic import ValidationError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
@@ -31,14 +32,16 @@ from slowapi.util import get_remote_address
 from sqlmodel import Session
 
 from src.db.database import create_db_and_tables, get_session
-from src.db.models import Evidence, Requirement
+from src.db.models import Evidence, JobPosting, Requirement
 from src.models.schemas import EvidencePayload, ExtractionResult, ExtractRequest
 from src.models.schemas import Requirement as SchemaRequirement
 from src.routers import applications, auth, candidates, jobs, requirements
 from src.security.auth import verify_api_key
+from src.security.permissions import CurrentUser, require_user
 from src.services.base_llm import BaseLLMService
 from src.services.llm_service import GeminiLLMService
-from src.services.pdf_service import extract_text_from_pdf_bytes
+from src.services.file_policy import MAX_UPLOAD_BYTES, read_upload_limited, sniff_kind
+from src.services.pdf_service import extract_text_from_pdf_bytes, extract_text_or_flag_scanned
 
 # Initialize Rate Limiter (15 requests/minute per client IP)
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
@@ -160,6 +163,27 @@ def get_llm_service() -> BaseLLMService:
     return GeminiLLMService()
 
 
+def _category_for_requirement(requirement_id: str, session: Session) -> str | None:
+    """
+    Resolves the profession category behind a requirement.
+
+    Requirements created for a posting are keyed "req_job_<job id>", so the
+    posting's category can be recovered and handed to the model. Without it
+    every applicant — chef, nurse, driver — was judged by the same yardstick.
+    """
+    if not requirement_id.startswith("req_job_"):
+        return None
+    try:
+        job_id = int(requirement_id.removeprefix("req_job_"))
+    except ValueError:
+        return None
+
+    from sqlmodel import select
+
+    job = session.exec(select(JobPosting).where(JobPosting.id == job_id)).first()
+    return job.category if job else None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Extraction Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,7 +191,7 @@ def get_llm_service() -> BaseLLMService:
 @app.post(
     "/api/v1/extract",
     response_model=ExtractionResult,
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key), Depends(require_user)],
     summary="Extract evidence from a raw data payload",
     tags=["extraction"],
 )
@@ -224,8 +248,8 @@ async def extract_evidence(
 @app.post(
     "/api/v1/extract/file",
     response_model=ExtractionResult,
-    dependencies=[Depends(verify_api_key)],
-    summary="Extract evidence from an uploaded file (PDF/TXT)",
+    dependencies=[Depends(verify_api_key), Depends(require_user)],
+    summary="Extract evidence from an uploaded document (PDF, image or text)",
     tags=["extraction"],
 )
 @limiter.limit("15/minute")
@@ -244,7 +268,7 @@ async def extract_evidence_from_file(
         "PDF_RESUME",
         description="Source type. Defaults to PDF_RESUME for file uploads."
     ),
-    file: UploadFile = File(..., description="PDF or plain text file to analyze."),
+    file: UploadFile = File(..., description="PDF, image (JPG/PNG/WebP) or plain text document."),
     session: Session = Depends(get_session),
     llm_service: BaseLLMService = Depends(get_llm_service),
 ) -> ExtractionResult:
@@ -263,53 +287,82 @@ async def extract_evidence_from_file(
         req_db = session.exec(
             select(Requirement).where(Requirement.external_id == requirement_id)
         ).first()
-        if not req_db:
-            req_db = Requirement(
-                external_id=requirement_id,
-                description=f"Technical requirement verification for {requirement_id}"
+        # Fall back to a profession-neutral description, and do NOT persist it:
+        # writing "Technical requirement verification" into the database meant a
+        # chef applying for a kitchen role was permanently evaluated against a
+        # technical yardstick.
+        requirement_description = (
+            req_db.description
+            if req_db
+            else "İlanda belirtilen mesleki yeterliliğin belgeyle doğrulanması."
+        )
+        requirement_category = _category_for_requirement(requirement_id, session)
+
+        # Read with a size limit and identify the file by its contents rather
+        # than by a filename the caller controls.
+        content_bytes = await read_upload_limited(file, MAX_UPLOAD_BYTES)
+        kind, mime = sniff_kind(content_bytes, file.filename)
+
+        media: list[MediaAttachment] = []
+        resolved_source = source_type
+
+        if kind == "image":
+            # A photographed certificate has no text layer; the model has to see it.
+            raw_text = f"Yüklenen belge görseli: {file.filename or 'belge'}"
+            media.append(
+                MediaAttachment(mime_type=mime, data=content_bytes, filename=file.filename)
             )
-            session.add(req_db)
-            session.commit()
-            session.refresh(req_db)
-
-        # Parse file content
-        content_bytes = await file.read()
-
-        if file.filename and file.filename.lower().endswith(".pdf"):
-            raw_text = extract_text_from_pdf_bytes(content_bytes)
-        elif file.content_type == "application/pdf":
-            raw_text = extract_text_from_pdf_bytes(content_bytes)
+            resolved_source = "IMAGE_DOCUMENT"
+        elif kind == "pdf":
+            raw_text, is_scanned = extract_text_or_flag_scanned(content_bytes)
+            if is_scanned:
+                # Scanned PDF: hand the file itself over instead of empty text.
+                raw_text = f"Taranmış belge: {file.filename or 'belge.pdf'}"
+                media.append(
+                    MediaAttachment(
+                        mime_type="application/pdf",
+                        data=content_bytes,
+                        filename=file.filename,
+                    )
+                )
+                resolved_source = "SCANNED_PDF"
         else:
-            # Assume UTF-8 text for all other formats
-            raw_text = content_bytes.decode("utf-8", errors="ignore")
+            raw_text = content_bytes.decode("utf-8", errors="replace")
 
         # Build the typed request — schema validation enforces consent gate
-        request = ExtractRequest(
+        extract_req = ExtractRequest(
             payload=EvidencePayload(
                 candidate_id=candidate_id,
-                source_type=source_type,  # type: ignore[arg-type]
+                source_type=resolved_source,  # type: ignore[arg-type]
                 raw_data=raw_text,
+                media=media,
                 consent_verified=consent_verified,
             ),
             requirement=SchemaRequirement(
-                id=req_db.external_id,
-                description=req_db.description,
+                id=requirement_id,
+                description=requirement_description,
+                category=requirement_category,
             ),
         )
 
-        if request.payload.source_type == "CHATGPT_EXPORT":
+        if extract_req.payload.source_type == "CHATGPT_EXPORT":
             import json
             try:
-                json.loads(request.payload.raw_data)
+                json.loads(extract_req.payload.raw_data)
             except json.JSONDecodeError:
                 raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
 
-        result = await llm_service.extract_evidence(request)
+        if extract_req.requirement.category is None:
+            extract_req.requirement.category = _category_for_requirement(
+                extract_req.requirement.id, session
+            )
+
+        result = await llm_service.extract_evidence(extract_req)
 
         db_evidence = Evidence(
-            candidate_external_id=request.payload.candidate_id,
-            requirement_external_id=request.requirement.id,
-            source_type=request.payload.source_type,
+            candidate_external_id=extract_req.payload.candidate_id,
+            requirement_external_id=extract_req.requirement.id,
+            source_type=extract_req.payload.source_type,
             status=result.status,
             confidence_score=result.confidence_score,
             reasoning=result.reasoning,
@@ -323,6 +376,16 @@ async def extract_evidence_from_file(
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        # Pydantic's ValidationError does NOT inherit from ValueError, so the
+        # branch below never caught it: a submission without consent — the one
+        # case the gate exists for — surfaced as a 500 instead of a rejection.
+        # Only the messages are forwarded; e.errors() carries the original
+        # exception objects, which are not JSON-serializable.
+        raise HTTPException(
+            status_code=422,
+            detail=[{"msg": err["msg"], "loc": list(err["loc"])} for err in e.errors()],
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -31,6 +31,11 @@ export default function KvkkPage() {
             Başvuru kapsamında yüklediğiniz belgeler: özgeçmiş, sertifika, diploma,
             ehliyet, ustalık belgesi, çalışma örnekleri ve eklediğiniz bağlantılar
           </li>
+          <li>
+            Belge fotoğrafı yüklerseniz, o görüntüde yer alan diğer bilgiler (örneğin
+            belge numarası, doğum tarihi veya fotoğrafınız) de işlenmiş olur. Yalnızca
+            başvurunuzla ilgili kısımların göründüğü belgeler yüklemenizi öneririz.
+          </li>
           <li>Başvuru kayıtlarınız ve bunların değerlendirme sonuçları</li>
         </ul>
       </section>
@@ -53,8 +58,9 @@ export default function KvkkPage() {
           </li>
           <li>
             <strong className="text-white">Google (Gemini API):</strong> belgelerinizin
-            metni, değerlendirmenin yapılabilmesi için Google&apos;ın yapay zeka servisine
-            iletilir. Bu, verinizin yurt dışına aktarılması anlamına gelir.
+            metni <em>ve fotoğrafı/taranmış görüntüsü</em>, değerlendirmenin yapılabilmesi
+            için Google&apos;ın yapay zeka servisine iletilir. Bu, verinizin yurt dışına
+            aktarılması anlamına gelir.
           </li>
         </ul>
       </section>

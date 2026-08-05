@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
 import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
   ApiError,
@@ -96,7 +97,15 @@ export default function CandidateEvidenceHub() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
-    if (selected) setFile(selected);
+    if (!selected) return;
+    const problem = validateDocument(selected);
+    if (problem) {
+      setAnalysisError(problem);
+      e.target.value = "";
+      return;
+    }
+    setAnalysisError(null);
+    setFile(selected);
   };
 
   const handleAnalyze = async (e: React.FormEvent) => {
@@ -457,7 +466,7 @@ export default function CandidateEvidenceHub() {
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-                  PDF / TXT Özgeçmiş Dosyası
+                  Özgeçmiş veya belge
                 </label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
@@ -466,7 +475,7 @@ export default function CandidateEvidenceHub() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.txt"
+                    accept={DOCUMENT_ACCEPT}
                     className="hidden"
                     onChange={handleFileSelect}
                   />
@@ -474,7 +483,7 @@ export default function CandidateEvidenceHub() {
                     <p className="text-emerald-400 text-sm font-semibold">📄 {file.name} ({(file.size / 1024).toFixed(1)} KB)</p>
                   ) : (
                     <p className="text-zinc-400 text-xs">
-                      CV dosyanızı seçmek için <span className="text-emerald-400 underline">tıklayın</span> (.pdf veya .txt)
+                      Dosyanızı seçmek için <span className="text-emerald-400 underline">tıklayın</span> — {DOCUMENT_HINT}
                     </p>
                   )}
                 </div>
@@ -491,7 +500,7 @@ export default function CandidateEvidenceHub() {
                   />
                   <span className="text-xs text-zinc-300 leading-normal">
                     <strong className="text-emerald-400">Belgemin incelenmesine onay veriyorum.</strong>{" "}
-                      Yüklediğim belge bana aittir ve doğrudur. Değerlendirme için metninin
+                      Yüklediğim belge bana aittir ve doğrudur. Değerlendirme için metninin ve görüntüsünün
                       Google&apos;ın yapay zeka servisine (yurt dışına) aktarılmasını kabul
                       ediyorum.{" "}
                       <Link

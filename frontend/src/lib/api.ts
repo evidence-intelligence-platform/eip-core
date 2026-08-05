@@ -1,5 +1,8 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080";
-export const INTERNAL_API_KEY = process.env.NEXT_PUBLIC_INTERNAL_API_KEY || "eif-test-internal-api-key";
+// All engine calls go through the same-origin server-side proxy
+// (src/app/api/eip/[...path]/route.ts), which attaches the internal
+// Zero Trust key on the server. The key must never appear here:
+// NEXT_PUBLIC_ env vars are inlined into the browser bundle.
+export const API_URL = "/api/eip";
 
 export interface UserAccount {
   id: number;
@@ -87,7 +90,6 @@ export interface ReportData {
 
 const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
   const headers: Record<string, string> = {
-    "X-Internal-API-Key": INTERNAL_API_KEY,
     ...extra,
   };
   if (token) {
@@ -101,7 +103,7 @@ const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function loginUser(email: string, password: string) {
-  const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+  const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
@@ -114,7 +116,7 @@ export async function loginUser(email: string, password: string) {
 }
 
 export async function registerUser(email: string, password: string, role: string, fullName?: string) {
-  const res = await fetch(`${API_URL}/api/v1/auth/register`, {
+  const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password, role, full_name: fullName }),
@@ -127,7 +129,7 @@ export async function registerUser(email: string, password: string, role: string
 }
 
 export async function getMe(token: string) {
-  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
+  const res = await fetch(`${API_URL}/auth/me`, {
     headers: getHeaders(token),
     cache: "no-store",
   });
@@ -140,7 +142,7 @@ export async function getMe(token: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getJobs(): Promise<JobPosting[]> {
-  const res = await fetch(`${API_URL}/api/v1/jobs/`, {
+  const res = await fetch(`${API_URL}/jobs/`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -149,7 +151,7 @@ export async function getJobs(): Promise<JobPosting[]> {
 }
 
 export async function createJob(job: Partial<JobPosting>, token?: string): Promise<JobPosting> {
-  const res = await fetch(`${API_URL}/api/v1/jobs/`, {
+  const res = await fetch(`${API_URL}/jobs/`, {
     method: "POST",
     headers: getHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify(job),
@@ -159,7 +161,7 @@ export async function createJob(job: Partial<JobPosting>, token?: string): Promi
 }
 
 export async function getApplications(): Promise<JobApplication[]> {
-  const res = await fetch(`${API_URL}/api/v1/applications/`, {
+  const res = await fetch(`${API_URL}/applications/`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -168,7 +170,7 @@ export async function getApplications(): Promise<JobApplication[]> {
 }
 
 export async function createApplication(application: Partial<JobApplication>): Promise<JobApplication> {
-  const res = await fetch(`${API_URL}/api/v1/applications/`, {
+  const res = await fetch(`${API_URL}/applications/`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(application),
@@ -178,7 +180,7 @@ export async function createApplication(application: Partial<JobApplication>): P
 }
 
 export async function updateApplicationStatus(appId: number, status: string): Promise<JobApplication> {
-  const res = await fetch(`${API_URL}/api/v1/applications/${appId}`, {
+  const res = await fetch(`${API_URL}/applications/${appId}`, {
     method: "PATCH",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ status }),
@@ -192,7 +194,7 @@ export async function updateApplicationStatus(appId: number, status: string): Pr
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getCandidates(): Promise<Candidate[]> {
-  const res = await fetch(`${API_URL}/api/v1/candidates/`, {
+  const res = await fetch(`${API_URL}/candidates/`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -201,7 +203,7 @@ export async function getCandidates(): Promise<Candidate[]> {
 }
 
 export async function createCandidate(candidate: Partial<Candidate>): Promise<Candidate> {
-  const res = await fetch(`${API_URL}/api/v1/candidates/`, {
+  const res = await fetch(`${API_URL}/candidates/`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(candidate),
@@ -211,7 +213,7 @@ export async function createCandidate(candidate: Partial<Candidate>): Promise<Ca
 }
 
 export async function getRequirements(): Promise<Requirement[]> {
-  const res = await fetch(`${API_URL}/api/v1/requirements/`, {
+  const res = await fetch(`${API_URL}/requirements/`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -220,7 +222,7 @@ export async function getRequirements(): Promise<Requirement[]> {
 }
 
 export async function createRequirement(requirement: Partial<Requirement>): Promise<Requirement> {
-  const res = await fetch(`${API_URL}/api/v1/requirements/`, {
+  const res = await fetch(`${API_URL}/requirements/`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify(requirement),
@@ -230,7 +232,7 @@ export async function createRequirement(requirement: Partial<Requirement>): Prom
 }
 
 export async function getCandidateEvidences(external_id: string): Promise<Evidence[]> {
-  const res = await fetch(`${API_URL}/api/v1/candidates/${external_id}/evidences`, {
+  const res = await fetch(`${API_URL}/candidates/${external_id}/evidences`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -253,7 +255,7 @@ export async function analyzeCandidateEvidence(candidateId: string, sourceType: 
       },
     };
 
-    const response = await fetch(`${API_URL}/api/v1/extract`, {
+    const response = await fetch(`${API_URL}/extract`, {
       method: "POST",
       headers: getHeaders(undefined, { "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
@@ -286,7 +288,7 @@ export async function analyzeCandidateFile(
     formData.append("source_type", "PDF_RESUME");
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/api/v1/extract/file`, {
+    const response = await fetch(`${API_URL}/extract/file`, {
       method: "POST",
       headers: getHeaders(),
       body: formData,

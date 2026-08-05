@@ -4,10 +4,12 @@ from sqlmodel import Session, select
 
 from src.db.database import get_session
 from src.db.models import Requirement
+from src.security.auth import verify_api_key
 
 router = APIRouter(
     prefix="/api/v1/requirements",
     tags=["requirements"],
+    dependencies=[Depends(verify_api_key)],
 )
 
 @router.get("/", response_model=list[Requirement])

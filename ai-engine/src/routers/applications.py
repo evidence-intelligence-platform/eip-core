@@ -6,6 +6,7 @@ Owner: EIF Architecture Team
 Compliance: 05_DATABASE_SCHEMA.md — JOB_APPLICATIONS Entity
 """
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,11 +28,41 @@ class ApplicationStatusUpdate(BaseModel):
     status: Literal["submitted", "reviewing", "accepted", "declined"]
 
 
-@router.get("/", response_model=list[JobApplication], summary="List all job applications")
-def list_applications(session: Session = Depends(get_session)) -> list[JobApplication]:
-    """Lists all submitted job applications."""
-    applications = session.exec(select(JobApplication)).all()
-    return applications
+class JobApplicationRead(BaseModel):
+    """
+    An application plus the candidate's identity. Without these the employer
+    dashboard had to guess the candidate's external_id to build a report link,
+    and every guess pointed at a record that does not exist.
+    """
+    id: int
+    candidate_id: int
+    job_id: int
+    status: str
+    created_at: datetime
+    candidate_external_id: str | None = None
+    candidate_name: str | None = None
+
+
+@router.get("/", response_model=list[JobApplicationRead], summary="List all job applications")
+def list_applications(session: Session = Depends(get_session)) -> list[JobApplicationRead]:
+    """Lists all submitted job applications with the applicant's identity."""
+    rows = session.exec(
+        select(JobApplication, Candidate).join(
+            Candidate, Candidate.id == JobApplication.candidate_id, isouter=True
+        )
+    ).all()
+    return [
+        JobApplicationRead(
+            id=app.id,
+            candidate_id=app.candidate_id,
+            job_id=app.job_id,
+            status=app.status,
+            created_at=app.created_at,
+            candidate_external_id=cand.external_id if cand else None,
+            candidate_name=cand.name if cand else None,
+        )
+        for app, cand in rows
+    ]
 
 
 @router.post("/", response_model=JobApplication, status_code=status.HTTP_201_CREATED, summary="Submit a job application")

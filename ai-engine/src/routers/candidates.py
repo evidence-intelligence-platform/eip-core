@@ -27,6 +27,18 @@ def create_candidate(candidate: Candidate, session: Session = Depends(get_sessio
     session.refresh(candidate)
     return candidate
 
+@router.get("/{external_id}", response_model=Candidate)
+def get_candidate(external_id: str, session: Session = Depends(get_session)):
+    """
+    Looks up a single candidate. Without this, the UI had to download the
+    whole roster just to check whether one record already existed.
+    """
+    candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return candidate
+
+
 @router.get("/{external_id}/evidences", response_model=list[Evidence])
 def get_candidate_evidences(external_id: str, session: Session = Depends(get_session)):
     candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()

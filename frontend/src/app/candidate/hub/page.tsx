@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
+  ApiError,
   getJobs,
   getApplications,
   analyzeCandidateFile,
@@ -40,7 +41,10 @@ export default function CandidateEvidenceHub() {
   const [accContent, setAccContent] = useState("");
   const [accProofLink, setAccProofLink] = useState("");
   const [publishingAcc, setPublishingAcc] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [accConsent, setAccConsent] = useState(false);
   const [accSuccess, setAccSuccess] = useState<string | null>(null);
+  const [accError, setAccError] = useState<string | null>(null);
 
   // No "cand_demo" fallback: writing evidence under a shared demo identity
   // mixes unrelated people's records together.
@@ -63,7 +67,15 @@ export default function CandidateEvidenceHub() {
       setApplications(appsRes.status === "fulfilled" ? appsRes.value : []);
       setEvidences(evRes.status === "fulfilled" ? evRes.value : []);
 
-      const failed = [jobsRes, appsRes, evRes].find((r) => r.status === "rejected");
+      // A 404 on the evidence call just means this candidate has no record
+      // yet (they have not applied anywhere) — that is an empty state, not a
+      // failure. Only real errors reach the banner.
+      const isMissingRecord = (r: PromiseSettledResult<unknown>) =>
+        r.status === "rejected" && r.reason instanceof ApiError && r.reason.status === 404;
+
+      const failed = [jobsRes, appsRes, evRes].find(
+        (r) => r.status === "rejected" && !isMissingRecord(r)
+      );
       if (failed && failed.status === "rejected") {
         setError(
           failed.reason instanceof Error
@@ -92,14 +104,15 @@ export default function CandidateEvidenceHub() {
     if (!file) return;
 
     if (!candidateExtId) {
-      setError("Belge yüklemek için giriş yapmanız gerekiyor.");
+      setAnalysisError("Belge yüklemek için giriş yapmanız gerekiyor.");
       return;
     }
 
     if (!consentVerified) {
-      setError("Belgenizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
+      setAnalysisError("Belgenizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
       return;
     }
+    setAnalysisError(null);
 
     try {
       setAnalyzing(true);
@@ -110,8 +123,11 @@ export default function CandidateEvidenceHub() {
 
       if (res.success) {
         setAnalysisResult(res.data);
+        setAnalysisError(null);
       } else {
-        setError(`AI Analiz Hatası: ${res.error}`);
+        // Separate from `error`: fetchData() below clears that one, which used
+        // to wipe this message off the screen a moment after it appeared.
+        setAnalysisError(res.error ?? "Belgeniz analiz edilemedi.");
       }
 
       await fetchData();
@@ -133,12 +149,12 @@ export default function CandidateEvidenceHub() {
       setAccSuccess(null);
 
       if (!candidateExtId) {
-        setError("Deneyim eklemek için giriş yapmanız gerekiyor.");
+        setAccError("Deneyim eklemek için giriş yapmanız gerekiyor.");
         return;
       }
 
-      if (!consentVerified) {
-        setError("Deneyiminizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
+      if (!accConsent) {
+        setAccError("Deneyiminizin değerlendirilebilmesi için onay kutusunu işaretlemeniz gerekiyor.");
         return;
       }
 
@@ -149,7 +165,7 @@ export default function CandidateEvidenceHub() {
         rawText,
         "req_general_accomplishment",
         "Doğrulanabilir bir mesleki deneyim veya iş örneği olmalıdır.",
-        consentVerified
+        accConsent
       );
 
       const newEntry: AccomplishmentEntry = {
@@ -204,7 +220,7 @@ export default function CandidateEvidenceHub() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href={`/candidates/${candidateExtId}`}
+            href={candidateExtId ? `/candidates/${candidateExtId}` : "/login"}
             className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition border border-zinc-700 flex items-center gap-1.5"
           >
             <span>👤</span> Profesyonel Profilimi Gör &rarr;
@@ -271,6 +287,11 @@ export default function CandidateEvidenceHub() {
               </span>
             </div>
 
+            {accError && (
+              <div role="alert" className="mb-3 p-3 bg-red-950/40 border border-red-800 text-red-300 text-xs rounded-xl">
+                {accError}
+              </div>
+            )}
             {accSuccess && (
               <div className="p-3.5 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs rounded-xl font-medium">
                 {accSuccess}
@@ -343,12 +364,25 @@ export default function CandidateEvidenceHub() {
                 />
               </div>
 
+              <label className="flex items-start gap-3 cursor-pointer p-3.5 bg-blue-950/30 border border-blue-800/50 rounded-xl">
+                <input
+                  type="checkbox"
+                  checked={accConsent}
+                  onChange={(e) => setAccConsent(e.target.checked)}
+                  className="mt-0.5 accent-blue-500 w-4 h-4 shrink-0"
+                />
+                <span className="text-xs text-zinc-300 leading-relaxed">
+                  Yazdığım deneyimin doğru olduğunu ve yapay zeka tarafından
+                  değerlendirilmesini kabul ediyorum.
+                </span>
+              </label>
+
               <button
                 type="submit"
                 disabled={publishingAcc}
                 className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl text-xs transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 flex items-center justify-center"
               >
-                {publishingAcc ? "AI Analizi Yapılıyor..." : "🏆 Başarı Vakasını AI İle Doğrula & Portföye Ekle"}
+                {publishingAcc ? "Analiz ediliyor…" : "Deneyimi Ekle"}
               </button>
             </form>
           </div>
@@ -363,7 +397,8 @@ export default function CandidateEvidenceHub() {
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-white text-sm">{acc.title}</h4>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
-                        <span>✓</span> AI Verified
+                        <span>{acc.verified_by_ai ? "✓" : "•"}</span>{" "}
+                        {acc.verified_by_ai ? "AI ile doğrulandı" : "AI analizi bekliyor"}
                       </span>
                     </div>
                     <p className="text-xs text-zinc-300 leading-relaxed">{acc.content}</p>
@@ -522,7 +557,7 @@ export default function CandidateEvidenceHub() {
               Veritabanında sizin için kayıtlı toplam <strong className="text-emerald-400">{evidences.length} adet</strong> yetkinlik kanıtı bulunmaktadır.
             </p>
             <Link
-              href={`/reports/${candidateExtId}`}
+              href={candidateExtId ? `/reports/${candidateExtId}` : "/login"}
               className="text-xs text-blue-400 hover:underline font-semibold block pt-1"
             >
               Tam Raporu İncele &rarr;

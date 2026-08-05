@@ -74,6 +74,10 @@ export interface JobApplication {
   job_id: number;
   status: string;
   created_at?: string;
+  // Returned by the list endpoint so the UI never has to guess the identity
+  // used for report links.
+  candidate_external_id?: string | null;
+  candidate_name?: string | null;
 }
 
 export interface ReportData {
@@ -117,10 +121,25 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
   const body = await res.json().catch(() => null);
   const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : null;
 
-  let message: string | null = null;
-  if (typeof detail === "string") {
+  // Status-based Turkish messages win over the backend's English `detail`;
+  // the raw text is a last resort so a Turkish UI never shows "Candidate not found".
+  const BY_STATUS: Record<number, string> = {
+    400: "Gönderilen bilgiler kabul edilmedi. Lütfen kontrol edin.",
+    401: "Bu işlem için giriş yapmanız gerekiyor.",
+    403: "Bu işlem için yetkiniz yok.",
+    404: "Aradığınız kayıt bulunamadı.",
+    409: "Bu kayıt daha önce işlenmiş.",
+    413: "Dosya boyutu çok büyük.",
+    429: "Çok fazla istek gönderildi. Lütfen biraz bekleyin.",
+    502: "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.",
+    503: "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.",
+    504: "İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.",
+  };
+
+  let message: string | null = BY_STATUS[res.status] ?? null;
+  if (!message && typeof detail === "string") {
     message = detail;
-  } else if (Array.isArray(detail)) {
+  } else if (!message && Array.isArray(detail)) {
     // Pydantic reports the offending field in `loc` and an English `msg`.
     // Name the field in Turkish rather than passing the raw validator text on.
     const FIELD_LABELS: Record<string, string> = {
@@ -151,11 +170,7 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
   }
 
   if (!message) {
-    if (res.status === 401 || res.status === 403) message = "Bu işlem için giriş yapmanız gerekiyor.";
-    else if (res.status === 404) message = "Aradığınız kayıt bulunamadı.";
-    else if (res.status === 409) message = "Bu kayıt daha önce işlenmiş.";
-    else if (res.status === 422) message = "Girdiğiniz bilgilerde eksik veya hatalı alan var.";
-    else if (res.status === 502 || res.status === 503) message = "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.";
+    if (res.status === 422) message = "Girdiğiniz bilgilerde eksik veya hatalı alan var.";
     else if (res.status >= 500) message = "Beklenmeyen bir sunucu hatası oluştu.";
     else message = fallback;
   }
@@ -258,6 +273,17 @@ export async function getCandidates(): Promise<Candidate[]> {
     cache: "no-store",
   });
   if (!res.ok) throw await toApiError(res, "Aday listesi yüklenemedi.");
+  return res.json();
+}
+
+/** Fetches one candidate. Returns null on 404 instead of throwing. */
+export async function getCandidate(externalId: string): Promise<Candidate | null> {
+  const res = await fetch(`${API_URL}/candidates/${encodeURIComponent(externalId)}`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw await toApiError(res, "Aday kaydı alınamadı.");
   return res.json();
 }
 

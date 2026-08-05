@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   getJobs,
-  getCandidates,
+  getCandidate,
   createCandidate,
   createApplication,
   analyzeCandidateFile,
@@ -91,6 +91,7 @@ export default function JobListingsPage() {
 
   const handleOpenApplyModal = (job: JobPosting) => {
     setSelectedJob(job);
+    setFormError(null);
     setSubmitSuccessData(null);
     setResumeFile(null);
     setLinkedinUrl("");
@@ -135,8 +136,9 @@ export default function JobListingsPage() {
         name: candidateName || user.email.split("@")[0] || "Aday Kullanıcı",
         consent_granted: consentVerified,
       }).catch(async (err) => {
-        // Already registered from an earlier application — reuse that record.
-        const existing = (await getCandidates().catch(() => [])).find((c) => c.external_id === extId);
+        // Already registered from an earlier application — fetch that one record.
+        // (Scanning the whole roster here would re-open the leak this change closed.)
+        const existing = await getCandidate(extId).catch(() => null);
         if (existing) return existing;
         throw err;
       });
@@ -380,6 +382,30 @@ export default function JobListingsPage() {
                     className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-2"
                   >
                     <span>🎯</span> Aday Paneline Git &rarr;
+                  </Link>
+                </div>
+              </div>
+            ) : !user?.email ? (
+              <div className="space-y-4 py-2">
+                <div className="p-4 bg-blue-950/30 border border-blue-800/50 rounded-xl text-sm text-zinc-300">
+                  <p className="font-semibold text-white mb-1">Başvurmak için giriş yapın</p>
+                  <p className="text-xs leading-relaxed">
+                    Belgelerinizin başvurunuza bağlanabilmesi için hesabınıza giriş yapmanız gerekiyor.
+                    Hesabınız yoksa kayıt olmanız birkaç saniye sürer.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href="/login"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition"
+                  >
+                    Giriş Yap
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
+                  >
+                    Hesap Oluştur
                   </Link>
                 </div>
               </div>

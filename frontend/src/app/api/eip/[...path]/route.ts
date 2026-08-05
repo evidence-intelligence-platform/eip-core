@@ -22,7 +22,13 @@ const FORWARDED_REQUEST_HEADERS = ["content-type", "authorization"];
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const search = req.nextUrl.search;
-  const target = `${ENGINE_URL}/api/v1/${path.join("/")}${search}`;
+  // Preserve the caller's trailing slash. FastAPI declares the collection
+  // routes as "/candidates/" etc. and answers a slash-less POST with a 307,
+  // which we cannot follow (the body has already been consumed) — the fetch
+  // then throws and every write turns into a 502. Keeping the slash means
+  // no redirect happens in the first place.
+  const trailingSlash = req.nextUrl.pathname.endsWith("/") ? "/" : "";
+  const target = `${ENGINE_URL}/api/v1/${path.join("/")}${trailingSlash}${search}`;
 
   const headers = new Headers({ "X-Internal-API-Key": INTERNAL_KEY });
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -30,7 +36,9 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     if (value) headers.set(name, value);
   }
 
-  const init: RequestInit = { method: req.method, headers };
+  // "manual" so an unexpected upstream redirect surfaces as a response we can
+  // forward, instead of a follow attempt that throws on an already-read body.
+  const init: RequestInit = { method: req.method, headers, redirect: "manual" };
   if (req.method !== "GET" && req.method !== "HEAD") {
     // Pass the raw body through untouched so JSON and multipart uploads
     // (PDF resumes) both survive the hop.

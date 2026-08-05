@@ -23,12 +23,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application source code
 COPY . .
 
-# Expose FastAPI port
+# Expose FastAPI port (Railway injects PORT; 8080 is the local default)
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/docs || exit 1
+    CMD curl -f "http://localhost:${PORT:-8080}/docs" || exit 1
 
-# Start Uvicorn server
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Apply migrations, then start Uvicorn. Shell form so ${PORT} expands —
+# Railway (and most PaaS) inject the port at runtime.
+CMD python -m src.db.migrate && uvicorn src.main:app --host 0.0.0.0 --port "${PORT:-8080}"

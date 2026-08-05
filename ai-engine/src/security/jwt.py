@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -25,8 +26,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 load_dotenv()
 
-# JWT Configuration
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "eif-super-secret-jwt-signing-key-change-in-production-2026")
+# JWT Configuration.
+# No hardcoded fallback: a guessable default would let anyone forge tokens.
+# When the env var is missing (local dev / unit tests) we generate an
+# ephemeral random secret — tokens simply stop being valid across restarts,
+# which is safe. Production MUST set JWT_SECRET_KEY explicitly.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or secrets.token_urlsafe(64)
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 

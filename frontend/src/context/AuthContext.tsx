@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { loginUser, registerUser, getMe, UserAccount } from "@/lib/api";
+import { loginUser, registerUser, getMe, setAuthToken, UserAccount } from "@/lib/api";
 
 interface AuthContextType {
   user: UserAccount | null;
@@ -26,12 +26,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedToken = localStorage.getItem("eip_token");
     if (savedToken) {
       setToken(savedToken);
+      setAuthToken(savedToken);
       getMe(savedToken)
         .then((userData) => {
           setUser(userData);
         })
         .catch(() => {
           localStorage.removeItem("eip_token");
+          setAuthToken(null);
           setToken(null);
           setUser(null);
         })
@@ -44,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     const data = await loginUser(email, password);
     setToken(data.access_token);
+    setAuthToken(data.access_token);
     localStorage.setItem("eip_token", data.access_token);
 
     const profile = await getMe(data.access_token).catch(() => ({
@@ -58,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (email: string, password: string, role: string, fullName?: string) => {
     const data = await registerUser(email, password, role, fullName);
     setToken(data.access_token);
+    setAuthToken(data.access_token);
     localStorage.setItem("eip_token", data.access_token);
 
     const profile = await getMe(data.access_token).catch(() => ({
@@ -71,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     localStorage.removeItem("eip_token");
+    setAuthToken(null);
     setToken(null);
     setUser(null);
   };

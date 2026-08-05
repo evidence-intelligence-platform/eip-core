@@ -25,7 +25,9 @@ router = APIRouter(
 class RegisterRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=6, description="Password (min 6 chars)")
-    role: Literal["employer", "candidate", "admin"] = Field("candidate", description="User role")
+    # "admin" is deliberately not selectable: the endpoint is public, so
+    # anyone could have granted themselves administrator rights.
+    role: Literal["employer", "candidate"] = Field("candidate", description="User role")
     full_name: str | None = Field(None, description="Candidate or Employer name")
 
 
@@ -46,6 +48,9 @@ class UserProfileResponse(BaseModel):
     email: str
     role: str
     created_at: str
+    # The server owns this identity. The UI used to build it from the e-mail
+    # address, which produced a different value than the one stored here.
+    candidate_external_id: str | None = None
 
 
 @router.post(
@@ -83,8 +88,10 @@ def register_user(
         if not existing_cand:
             cand = Candidate(
                 external_id=ext_id,
+                user_id=user.id,
                 name=request.full_name or request.email.split('@')[0],
-                consent_granted=True,
+                # Consent is captured per submission, not granted at signup.
+                consent_granted=False,
             )
             session.add(cand)
             session.commit()
@@ -138,9 +145,14 @@ def get_me(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    candidate = session.exec(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).first()
+
     return UserProfileResponse(
         id=user.id,
         email=user.email,
         role=user.role,
         created_at=user.created_at.isoformat(),
+        candidate_external_id=candidate.external_id if candidate else None,
     )

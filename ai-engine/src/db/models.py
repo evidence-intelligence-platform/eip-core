@@ -61,6 +61,12 @@ class Candidate(SQLModel, table=True):
     """Candidate profile entity."""
     id: int | None = Field(default=None, primary_key=True)
     external_id: str = Field(index=True, unique=True, description="External ID from ATS or Core system")
+    user_id: int | None = Field(
+        default=None,
+        foreign_key="useraccount.id",
+        index=True,
+        description="Owning account. Without it a candidate cannot be told apart from anyone else's record.",
+    )
     name: str
     consent_granted: bool = Field(default=True, description="Crucial privacy flag for GDPR/CCPA")
     consent_timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -81,6 +87,11 @@ class JobPosting(SQLModel, table=True):
     company_id: int | None = Field(default=None, foreign_key="company.id")
     title: str = Field(index=True)
     description: str
+    category: str = Field(
+        default="OTHER",
+        index=True,
+        description="Profession category. The sector filter had nothing to match on without it.",
+    )
     status: str = Field(default="active", description="draft, active, closed")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
   getJobs,
   getApplications,
@@ -26,7 +27,7 @@ export default function EmployerDashboard() {
   // New Job Form State
   const [jobTitle, setJobTitle] = useState("");
   const [companyName, setCompanyName] = useState(user?.email ? user.email.split("@")[0] + " Şirketi" : "Acme Corp");
-  const [category, setCategory] = useState<ProfessionCategory>("HEALTHCARE");
+  const [category, setCategory] = useState<string>("OTHER");
   const [description, setDescription] = useState("");
   const [submittingJob, setSubmittingJob] = useState(false);
   const [jobSuccess, setJobSuccess] = useState<string | null>(null);
@@ -237,12 +238,16 @@ export default function EmployerDashboard() {
                     onChange={(e) => setCategory(e.target.value as ProfessionCategory)}
                     className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
                   >
-                    <option value="HEALTHCARE">🩺 Sağlık & Tıp (Doktor, Hemşire)</option>
-                    <option value="TECHNOLOGY">🤖 Teknoloji & Yapay Zeka</option>
-                    <option value="TRANSPORTATION">🚗 Ulaşım & Lojistik (Şoför, Kurye)</option>
-                    <option value="SERVICES">🧹 Ev Hizmetleri & Bakım</option>
-                    <option value="GASTRONOMY">🍳 Gastronomi & Mutfak (Şef)</option>
-                    <option value="CONSTRUCTION">🏗️ İnşaat & Mimarlık</option>
+                    {SELECTABLE_CATEGORIES.map((c) => (
+
+                      <option key={c.key} value={c.key}>
+
+                        {c.icon} {c.label}
+
+                      </option>
+
+                    ))}
+
                   </select>
                 </div>
               </div>

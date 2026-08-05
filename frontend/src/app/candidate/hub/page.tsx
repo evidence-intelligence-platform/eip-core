@@ -258,7 +258,7 @@ export default function CandidateEvidenceHub() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-zinc-300">
           <div className="p-3 bg-zinc-950/60 rounded-xl border border-emerald-900/40 space-y-1">
             <strong className="text-white block">1. PDF CV&apos;nizi Yükleyin</strong>
-            <p className="text-zinc-400">Deneyimlerinizi ve yetkinliklerinizi içeren güncel özgeçmişinizi yükleyin ve Zero Trust rızasını onaylayın.</p>
+            <p className="text-zinc-400">Güncel özgeçmişinizi yükleyin ve onay kutusunu işaretleyin.</p>
           </div>
           <div className="p-3 bg-zinc-950/60 rounded-xl border border-emerald-900/40 space-y-1">
             <strong className="text-white block">2. Çoklu Kanıt Ekleyin</strong>
@@ -308,7 +308,7 @@ export default function CandidateEvidenceHub() {
                     value={accCategory}
                     disabled={publishingAcc}
                     onChange={(e) => setAccCategory(e.target.value as ProfessionCategory)}
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                   >
                     {SELECTABLE_CATEGORIES.map((c) => (
 
@@ -334,7 +334,7 @@ export default function CandidateEvidenceHub() {
                     value={accTitle}
                     onChange={(e) => setAccTitle(e.target.value)}
                     placeholder="Örn: 10 Yıllık Makam Şoförlüğü & İleri Sürüş Sertifikaları"
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -350,7 +350,7 @@ export default function CandidateEvidenceHub() {
                   value={accContent}
                   onChange={(e) => setAccContent(e.target.value)}
                   placeholder="Başarınızı, tamamladığınız projeyi, cerrahi ameliyat sayınızı, ehliyet sınıfınızı veya mesleki deneyiminizi detaylandırın..."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
                 />
               </div>
 
@@ -364,7 +364,7 @@ export default function CandidateEvidenceHub() {
                   value={accProofLink}
                   onChange={(e) => setAccProofLink(e.target.value)}
                   placeholder="https://drive.google.com/sertifikam veya https://github.com/projem"
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                 />
               </div>
 
@@ -444,7 +444,7 @@ export default function CandidateEvidenceHub() {
                   value={selectedJobId}
                   disabled={analyzing}
                   onChange={(e) => setSelectedJobId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500 transition disabled:opacity-50"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-emerald-500 transition disabled:opacity-50"
                 >
                   <option value="">— Genel Özgeçmiş Değerlendirmesi —</option>
                   {jobs.map((j) => (
@@ -490,7 +490,17 @@ export default function CandidateEvidenceHub() {
                     className="mt-1 accent-emerald-500 w-4 h-4"
                   />
                   <span className="text-xs text-zinc-300 leading-normal">
-                    <strong className="text-emerald-400">Zero Trust Aday Rızası & Çapraz Sorgu Onayı:</strong> Sunmuş olduğum tüm verilerin doğru olduğunu, Gemini AI Çapraz Sorgulamasına ve Karakter/Yetkinlik Analizine tabi tutulmasını rıza ile kabul ediyorum.
+                    <strong className="text-emerald-400">Belgemin incelenmesine onay veriyorum.</strong>{" "}
+                      Yüklediğim belge bana aittir ve doğrudur. Değerlendirme için metninin
+                      Google&apos;ın yapay zeka servisine (yurt dışına) aktarılmasını kabul
+                      ediyorum.{" "}
+                      <Link
+                        href="/kvkk"
+                        target="_blank"
+                        className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                      >
+                        KVKK aydınlatma metni
+                      </Link>
                   </span>
                 </label>
               </div>

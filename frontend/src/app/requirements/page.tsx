@@ -126,7 +126,7 @@ export default function RequirementsPage() {
                   required
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500"
                   placeholder="Örn: req_001"
                 />
               </div>
@@ -137,7 +137,7 @@ export default function RequirementsPage() {
                   rows={3}
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500"
                   placeholder="Örn: React custom hook deneyimi en az 2 yıl olmalı."
                 />
               </div>

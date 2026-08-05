@@ -208,7 +208,7 @@ export default function EmployerDashboard() {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   placeholder="Örn: Acme Sağlık A.Ş."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                 />
               </div>
 
@@ -224,7 +224,7 @@ export default function EmployerDashboard() {
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
                     placeholder="Örn: Kıdemli Uzman Doktor / Makam Şoförü"
-                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                   />
                 </div>
 
@@ -236,7 +236,7 @@ export default function EmployerDashboard() {
                     value={category}
                     disabled={submittingJob}
                     onChange={(e) => setCategory(e.target.value as ProfessionCategory)}
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
                   >
                     {SELECTABLE_CATEGORIES.map((c) => (
 
@@ -263,7 +263,7 @@ export default function EmployerDashboard() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Pozisyonun detaylarını, aranan sertifikaları, çalışma şartlarını ve beklentilerinizi ayrıntılı yazın..."
-                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition leading-relaxed disabled:opacity-50"
                 />
               </div>
 

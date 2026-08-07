@@ -36,6 +36,12 @@ export interface Evidence {
   status: "VERIFIED" | "INSUFFICIENT EVIDENCE" | "CONTRADICTION" | string;
   reasoning: string;
   evidence_pointer?: string;
+  /**
+   * Human moderation verdict. Employers are only ever served "approved"
+   * rows; the owning candidate also receives "pending" and "rejected" rows
+   * so the review outcome can be shown to them instead of silently hidden.
+   */
+  review_status?: "pending" | "approved" | "rejected" | string;
   created_at?: string;
 }
 
@@ -78,6 +84,13 @@ export interface JobApplication {
   // used for report links.
   candidate_external_id?: string | null;
   candidate_name?: string | null;
+  /**
+   * Whether the signed-in caller may decide (accept/decline) this
+   * application. Mirrors the backend PATCH guard: employers also see
+   * applications into ownerless (pre-ownership) postings, but deciding those
+   * always 403s — the dashboard must not offer buttons for them.
+   */
+  decidable?: boolean;
 }
 
 export interface ReportData {
@@ -221,6 +234,19 @@ export async function getMe(token: string) {
   });
   if (!res.ok) throw await toApiError(res, "Hesap bilgileriniz alınamadı.");
   return res.json();
+}
+
+/**
+ * Permanently deletes the signed-in user's account and owned data.
+ * The engine answers 204 with no body, so there is nothing to parse —
+ * callers clear local auth state themselves after this resolves.
+ */
+export async function deleteMyAccount(): Promise<void> {
+  const res = await fetch(`${API_URL}/auth/me`, {
+    method: "DELETE",
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw await toApiError(res, "Hesabınız silinemedi. Lütfen tekrar deneyin.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -381,12 +407,29 @@ export async function analyzeCandidateEvidence(
   }
 }
 
+/**
+ * Shape of the engine's FileExtractionResult. `review_status` is "pending"
+ * for image/scanned uploads, which wait for human moderation before the
+ * evidence is shown to employers — the UI surfaces that to the candidate.
+ */
+export interface FileAnalysisData {
+  status: "VERIFIED" | "INSUFFICIENT EVIDENCE" | "CONTRADICTION" | string;
+  confidence_score?: number;
+  reasoning?: string;
+  evidence_pointer?: string | null;
+  review_status?: "pending" | "approved" | string;
+}
+
+export type FileAnalysisResponse =
+  | { success: true; data: FileAnalysisData }
+  | { success: false; error: string };
+
 export async function analyzeCandidateFile(
   candidateId: string,
   requirementId: string,
   file: File,
   consentVerified: boolean
-) {
+): Promise<FileAnalysisResponse> {
   try {
     const formData = new FormData();
     formData.append("candidate_id", candidateId);
@@ -415,9 +458,115 @@ export async function analyzeCandidateFile(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Moderation APIs (admin-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ModerationReviewStatus = "pending" | "approved" | "rejected";
+
+export interface ModerationEvidenceItem {
+  id: number;
+  candidate_external_id: string;
+  requirement_external_id: string;
+  source_type?: string | null;
+  status: "VERIFIED" | "INSUFFICIENT EVIDENCE" | "CONTRADICTION" | string;
+  confidence_score?: number | null;
+  reasoning?: string | null;
+  evidence_pointer?: string | null;
+  review_status: ModerationReviewStatus | string;
+  media_filename?: string | null;
+  media_mime?: string | null;
+  has_media: boolean;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+}
+
+export interface ModerationEvidenceList {
+  items: ModerationEvidenceItem[];
+  total: number;
+}
+
+export async function listModerationEvidences(
+  params: {
+    review_status?: ModerationReviewStatus;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<ModerationEvidenceList> {
+  const query = new URLSearchParams();
+  if (params.review_status) query.set("review_status", params.review_status);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  const qs = query.toString();
+
+  const res = await fetch(`${API_URL}/moderation/evidences${qs ? `?${qs}` : ""}`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "Moderasyon listesi yüklenemedi.");
+  return res.json();
+}
+
+export async function decideModerationEvidence(
+  id: number,
+  review_status: "approved" | "rejected",
+  note?: string
+): Promise<ModerationEvidenceItem> {
+  const trimmed = note?.trim();
+  const res = await fetch(`${API_URL}/moderation/evidences/${id}`, {
+    method: "PATCH",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify(trimmed ? { review_status, note: trimmed } : { review_status }),
+  });
+  if (!res.ok) throw await toApiError(res, "Moderasyon kararı kaydedilemedi.");
+  return res.json();
+}
+
+/**
+ * Media requires the Authorization header, so a plain <img src> cannot load
+ * it — callers fetch the Blob, createObjectURL it, and revoke on cleanup.
+ */
+export async function fetchModerationMedia(id: number): Promise<Blob> {
+  const res = await fetch(`${API_URL}/moderation/evidences/${id}/media`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "Belge görüntülenemedi.");
+  return res.blob();
+}
+
+/** True when human review allows this evidence to count toward the score. */
+export function isEvidenceApproved(e: Evidence): boolean {
+  // Missing field means a pre-moderation row; those were always shown.
+  return !e.review_status || e.review_status === "approved";
+}
+
+/**
+ * Score and counts over the *approved* rows only. The backend serves
+ * employers nothing but approved evidence, so counting a pending or
+ * rejected row here would show the candidate a percentage no employer can
+ * ever see — the same report URL must add up to the same score for both.
+ */
+export function summarizeEvidences(evidences: Evidence[]): ReportData["summary"] {
+  const scorable = evidences.filter(isEvidenceApproved);
+
+  const total = scorable.length;
+  const verified = scorable.filter((e) => e.status === "VERIFIED").length;
+  const insufficient = scorable.filter((e) => e.status === "INSUFFICIENT EVIDENCE").length;
+  const contradictions = scorable.filter((e) => e.status === "CONTRADICTION").length;
+
+  const score = total > 0 ? Math.round((verified / total) * 100) : 0;
+
+  return { total, verified, insufficient, contradictions, score };
+}
+
 export async function getReportData(candidateId: string): Promise<ReportData> {
-  const candidates = await getCandidates();
-  const candidate = candidates.find((c) => c.external_id === candidateId);
+  // The single-candidate endpoint answers the candidate the record is about
+  // and the employers who evaluate applicants, so both can open this report.
+  // Listing the roster here 403'd every candidate who clicked "Raporumu gör"
+  // — that list is employer-only.
+  const candidate = await getCandidate(candidateId);
   // No silent stand-in: fabricating a candidate here is what produced the
   // "ghost profile" — a 0% report for someone whose record was never found.
   if (!candidate) {
@@ -426,22 +575,9 @@ export async function getReportData(candidateId: string): Promise<ReportData> {
 
   const evidences = await getCandidateEvidences(candidateId);
 
-  const total = evidences.length;
-  const verified = evidences.filter((e) => e.status === "VERIFIED").length;
-  const insufficient = evidences.filter((e) => e.status === "INSUFFICIENT EVIDENCE").length;
-  const contradictions = evidences.filter((e) => e.status === "CONTRADICTION").length;
-
-  const score = total > 0 ? Math.round((verified / total) * 100) : 0;
-
   return {
     candidate,
     evidences,
-    summary: {
-      total,
-      verified,
-      insufficient,
-      contradictions,
-      score,
-    },
+    summary: summarizeEvidences(evidences),
   };
 }

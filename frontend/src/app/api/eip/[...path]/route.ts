@@ -40,6 +40,14 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     if (value) headers.set(name, value);
   }
 
+  // Every request reaches the engine from this server, so without this the
+  // consent log recorded this proxy's own address for every candidate — the
+  // column that is supposed to substantiate who granted consent. Pass the
+  // caller's address on; the engine reads the left-most entry. It is only as
+  // trustworthy as the ingress in front of Next, which is what sets it.
+  const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip");
+  if (clientIp) headers.set("x-forwarded-for", clientIp);
+
   // "manual" so an unexpected upstream redirect surfaces as a response we can
   // handle here, instead of a follow attempt that throws on an already-read body.
   const init: RequestInit = { method: req.method, headers, redirect: "manual" };

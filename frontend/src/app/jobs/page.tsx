@@ -16,7 +16,26 @@ import {
   ProfessionCategory,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { IconHumanReview } from "@/components/illustrations";
 
+const AI_STATUS_LABELS: Record<string, string> = {
+  VERIFIED: "Doğrulandı",
+  "INSUFFICIENT EVIDENCE": "Yetersiz Kanıt",
+  CONTRADICTION: "Çelişki",
+};
+
+const JOB_STATUS_LABELS: Record<string, string> = {
+  active: "Yayında",
+  draft: "Taslak",
+  closed: "Kapandı",
+};
+
+// A negative verdict must not wear the success color.
+const AI_STATUS_STYLES: Record<string, string> = {
+  VERIFIED: "bg-ok/10 text-ok border-ok/30",
+  "INSUFFICIENT EVIDENCE": "bg-warn/10 text-warn border-warn/30",
+  CONTRADICTION: "bg-err/10 text-err border-err/30",
+};
 
 export default function JobListingsPage() {
   const { user } = useAuth();
@@ -53,6 +72,58 @@ export default function JobListingsPage() {
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const formErrorRef = useRef<HTMLDivElement>(null);
+
+  // The error banner sits at the top of the form; on short viewports the
+  // viewer is usually scrolled down at the submit button when validation
+  // fails, so bring the message to them instead of failing silently.
+  useEffect(() => {
+    if (formError) {
+      formErrorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [formError]);
+
+  // Dialog behaviour for the apply modal: focus moves into the dialog when it
+  // opens and returns to the trigger when it closes.
+  useEffect(() => {
+    if (!selectedJob) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    modalRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, [selectedJob]);
+
+  // Keep Tab inside the open dialog; Escape closes it (unless submitting).
+  useEffect(() => {
+    if (!selectedJob) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (!submitting) setSelectedJob(null);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const dialog = modalRef.current;
+      if (!dialog) return;
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedJob, submitting]);
 
   const fetchData = async () => {
     try {
@@ -88,6 +159,9 @@ export default function JobListingsPage() {
     setSelectedJob(job);
     setFormError(null);
     setSubmitSuccessData(null);
+    // Consent is per-application: a tick given for another ilan (or a
+    // cancelled attempt) must not carry over as a pre-ticked box.
+    setConsentVerified(false);
     setResumeFile(null);
     setLinkedinUrl("");
     setGithubUrl("");
@@ -182,7 +256,7 @@ export default function JobListingsPage() {
       if (githubUrl.trim()) {
         const r = await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, reqId, reqDesc, consentVerified);
         if (r.success) extraSources++;
-        else failedSources.push("Portfolyo bağlantısı");
+        else failedSources.push("Portföy bağlantısı");
       }
 
       // 6. Process Certificate / License Link
@@ -217,241 +291,285 @@ export default function JobListingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-slate-200 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-black to-black -z-20 pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 -z-10 mix-blend-screen pointer-events-none" />
-      <div className="space-y-8 max-w-6xl mx-auto py-12 px-4 relative">
+    <div className="relative">
+      {/* Single quiet brand tint behind the header — same grammar as the landing page */}
+      <div
+        className="absolute inset-x-0 top-0 h-[24rem] -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(60% 70% at 50% 0%, color-mix(in oklab, var(--brand) 7%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="space-y-8 max-w-6xl mx-auto py-12 px-4">
         {/* Header */}
-      <div className="text-center space-y-3 border-b border-zinc-800 pb-8">
-        <h1 className="text-4xl font-extrabold text-white tracking-tight">
-          Evrensel Meslek İlanları & <span className="text-blue-500">Kanıt Portalı</span>
-        </h1>
-        <p className="text-zinc-400 text-sm max-w-3xl mx-auto">
-          Tüm meslek gruplarından (Tıp, Yapay Zeka, Şoförlük, Hizmet Sektörü, Gastronomi, Mimarlık) açık pozisyonlar. Kanıtlarınızı ekleyin ve doğrulanmış skorunuzla başvurun.
-        </p>
-      </div>
-
-      {/* Sector Category Filters */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {CATEGORIES.map((cat) => {
-          const active = selectedCategory === cat.key;
-          return (
-            <button
-              key={cat.key}
-              onClick={() => setSelectedCategory(cat.key)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 ${
-                active
-                  ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20"
-                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
-              }`}
-            >
-              <span>{cat.icon}</span> {cat.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {error && (
-        <div role="alert" className="p-4 bg-red-950/40 border border-red-800 text-red-300 text-sm rounded-xl flex flex-wrap items-center justify-between gap-3">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={fetchData}
-            className="px-3 py-1.5 bg-red-900/60 hover:bg-red-900 border border-red-700 text-red-100 rounded-lg text-xs font-semibold transition"
-          >
-            Tekrar Dene
-          </button>
-        </div>
-      )}
-
-      {/* Job Cards */}
-      {loading ? (
-        <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl text-zinc-400 text-sm">
-          İş ilanları yükleniyor...
-        </div>
-      ) : filteredJobs.length === 0 ? (
-        <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl space-y-3">
-          <p className="text-zinc-400 text-base">
-            {error
-              ? "İlanlar şu anda görüntülenemiyor."
-              : "Bu kategoride henüz aktif bir iş ilanı yayınlanmadı."}
+        <div className="text-center space-y-3 border-b border-line pb-8">
+          <p className="eyebrow">Açık ilanlar</p>
+          <h1 className="text-title text-fg">
+            İlanı seçin, <span className="text-brand italic">belgenizle</span> başvurun
+          </h1>
+          <p className="text-fg-soft text-sm max-w-3xl mx-auto leading-relaxed">
+            Sağlıktan lojistiğe, mutfaktan yazılıma her meslek grubundan açık
+            pozisyonlar. Belgelerinizi ekleyin; başvurunuz gerekçesiyle birlikte
+            değerlendirilsin.
           </p>
-          <p className="text-xs text-zinc-500">Farklı bir meslek kategorisi seçerek arama yapabilirsiniz.</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          {filteredJobs.map((job) => (
-            <div
-              key={job.id}
-              className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl space-y-5 hover:border-white/20 transition-all duration-500 shadow-2xl group"
+
+        {/* Sector Category Filters */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {CATEGORIES.map((cat) => {
+            const active = selectedCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => setSelectedCategory(cat.key)}
+                aria-pressed={active}
+                className={`px-4 py-2 rounded-md text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+                  active
+                    ? "bg-brand border-brand text-brand-ink"
+                    : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50"
+                }`}
+              >
+                <span aria-hidden="true">{cat.icon}</span> {cat.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {error && (
+          <div role="alert" className="p-4 bg-err/10 border border-err/30 text-err text-sm rounded-md flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={fetchData}
+              className="px-3 py-1.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors"
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-bold text-white tracking-tight">{job.title}</h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-400 border border-emerald-800">
-                      {job.status || "Aktif"}
-                    </span>
+              Tekrar Dene
+            </button>
+          </div>
+        )}
+
+        {/* Job Cards */}
+        {loading ? (
+          <div className="card p-12 text-center text-fg-soft text-sm">
+            İş ilanları yükleniyor…
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div className="card p-12 text-center space-y-3">
+            <p className="text-fg-soft text-base">
+              {error
+                ? "İlanlar şu anda görüntülenemiyor."
+                : "Bu kategoride henüz aktif bir iş ilanı yayınlanmadı."}
+            </p>
+            <p className="text-xs text-fg-mute">Farklı bir meslek kategorisi seçerek arama yapabilirsiniz.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6">
+            {filteredJobs.map((job) => (
+              <div
+                key={job.id}
+                className="card card-hover p-8 space-y-5"
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-2xl font-semibold text-fg tracking-tight text-balance">{job.title}</h2>
+                      <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
+                        {JOB_STATUS_LABELS[job.status] ?? "Yayında"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-fg-mute mt-1.5">
+                      {job.company_name || "EİP Partner Kurum"}
+                      <span aria-hidden="true"> · </span>
+                      <span className="tabular-nums">İlan No #{job.id}</span>
+                    </p>
                   </div>
-                  <p className="text-xs text-blue-400 font-semibold mt-1">
-                    🏢 {job.company_name || "EIP Partner Kurum"} • İlan ID: #{job.id}
-                  </p>
+
+                  <button
+                    onClick={() => handleOpenApplyModal(job)}
+                    className="btn btn-brand text-sm shrink-0"
+                  >
+                    Belgelerinle başvur
+                    <span aria-hidden="true">&rarr;</span>
+                  </button>
                 </div>
 
+                <div className="p-4 bg-well rounded-md border border-line text-sm text-fg-soft leading-relaxed">
+                  {job.description}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Apply Modal */}
+        {selectedJob && (
+          /* No items-center here: when the dialog is taller than the viewport,
+             centering pushes its top into unreachable block-start overflow —
+             the title, close button and error banner get clipped off with no
+             way to scroll to them. m-auto on the child centers short dialogs
+             and gracefully top-aligns tall ones inside the scroll container. */
+          <div className="fixed inset-0 bg-well/80 backdrop-blur-sm flex p-4 z-50 overflow-y-auto">
+            <div
+              ref={modalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="basvuru-modal-baslik"
+              tabIndex={-1}
+              className="card p-8 max-w-xl w-full space-y-6 m-auto relative overflow-hidden"
+            >
+              {submitting && (
+                <div className="absolute inset-0 bg-well/85 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-5 overflow-hidden rounded-lg">
+                  <div className="absolute left-0 top-0 w-full h-1/2 bg-gradient-to-b from-transparent via-brand/15 to-transparent animate-scanning pointer-events-none" />
+                  <div className="w-12 h-12 border-4 border-brand/25 border-t-brand rounded-full animate-spin relative z-20" />
+                  <div className="text-center relative z-20 space-y-1.5">
+                    <p className="text-fg font-semibold text-base">Belgeleriniz inceleniyor…</p>
+                    <p className="text-xs text-fg-soft">Bu birkaç saniye sürebilir; lütfen sayfayı kapatmayın.</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-between items-center border-b border-line pb-4">
+                <div>
+                  <h3 id="basvuru-modal-baslik" className="text-lg font-semibold text-fg tracking-tight">Belgelerinizle başvurun</h3>
+                  <p className="text-xs text-fg-mute mt-0.5">
+                    Pozisyon: <span className="text-fg-soft font-medium">{selectedJob.title}</span>
+                  </p>
+                </div>
                 <button
-                  onClick={() => handleOpenApplyModal(job)}
-                  className="px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl text-sm transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/25 flex items-center justify-center gap-2"
+                  onClick={() => setSelectedJob(null)}
+                  disabled={submitting}
+                  aria-label="Pencereyi kapat"
+                  className="text-fg-mute hover:text-fg text-xl p-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span>🚀</span> İlana Başvur & Kanıtları Yükle &rarr;
+                  &times;
                 </button>
               </div>
 
-              <div className="p-4 bg-zinc-950/60 rounded-xl border border-zinc-800/80 text-sm text-zinc-300 leading-relaxed">
-                {job.description}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Apply Modal */}
-      {selectedJob && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-zinc-950/90 border border-white/10 p-8 rounded-3xl max-w-xl w-full space-y-6 shadow-2xl my-8 relative overflow-hidden">
-            {submitting && (
-                <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-10 flex flex-col items-center justify-center space-y-5 overflow-hidden rounded-3xl">
-                    <div className="absolute left-0 top-0 w-full h-1/2 bg-gradient-to-b from-transparent via-blue-500/30 to-transparent animate-scanning pointer-events-none" />
-                    <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin shadow-[0_0_15px_rgba(59,130,246,0.5)] relative z-20" />
-                    <div className="text-center relative z-20">
-                      <p className="text-white font-bold animate-pulse text-lg tracking-wide">🧠 Yapay Zeka Çapraz Sorgusu Sürüyor...</p>
-                      <p className="text-xs text-blue-300 mt-2 font-medium">Lütfen bekleyin, kanıtlarınız Gemini 2.5 Flash ile analiz ediliyor.</p>
-                    </div>
-                </div>
-            )}
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
-              <div>
-                <h3 className="text-xl font-bold text-white">Çoklu Kanıt Destekli İş Başvurusu</h3>
-                <p className="text-xs text-blue-400 mt-0.5">Pozisyon: {selectedJob.title}</p>
-              </div>
-              <button
-                onClick={() => setSelectedJob(null)}
-                className="text-zinc-500 hover:text-white text-xl p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            {submitSuccessData ? (
-              <div className="space-y-5 py-2">
-                <div className="p-4 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-sm rounded-xl space-y-2">
-                  <p className="font-bold text-base flex items-center gap-2">
-                    <span>✅</span> Başvurunuz alındı — {submitSuccessData.extraSourcesCount} kanıt kaynağı işlendi. (Başvuru No #{submitSuccessData.appId})
-                  </p>
-                  <p className="text-xs text-zinc-300">
-                    Belgeleriniz işverenin değerlendirme ekranına aktarıldı.
-                  </p>
-                  {submitSuccessData.failedSources.length > 0 && (
-                    <p className="text-xs text-amber-300 border-t border-emerald-800/60 pt-2">
-                      Şu kaynaklar işlenemedi: {submitSuccessData.failedSources.join(", ")}. Başvurunuz geçerli; bu belgeleri profilinizden tekrar yükleyebilirsiniz.
+              {submitSuccessData ? (
+                <div className="space-y-5 py-2">
+                  <div className="p-4 bg-ok/10 border border-ok/30 rounded-md space-y-2">
+                    <p className="font-semibold text-base text-ok">
+                      Başvurunuz alındı — <span className="tabular-nums">{submitSuccessData.extraSourcesCount}</span> kanıt kaynağı işlendi.{" "}
+                      <span className="tabular-nums">(Başvuru No #{submitSuccessData.appId})</span>
                     </p>
-                  )}
-                </div>
+                    <p className="text-xs text-fg-soft">
+                      {submitSuccessData.aiResult?.review_status === "pending"
+                        ? "Belgeniz incelemeye alındı; işverene gösterilmeden önce ekibimiz tarafından kontrol edilir. Sizin yapmanız gereken bir şey yok."
+                        : "Belgeleriniz işverenin değerlendirme ekranına aktarıldı."}
+                    </p>
+                    {submitSuccessData.failedSources.length > 0 && (
+                      <p className="text-xs text-warn border-t border-ok/20 pt-2">
+                        Şu kaynaklar işlenemedi: {submitSuccessData.failedSources.join(", ")}. Başvurunuz geçerli; bu belgeleri profilinizden tekrar yükleyebilirsiniz.
+                      </p>
+                    )}
+                  </div>
 
-                {submitSuccessData.aiResult && (
-                  <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white">🧠 Gemini AI Özgeçmiş Analizi:</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900 text-emerald-300">
-                        {submitSuccessData.aiResult.status}
-                      </span>
+                  {submitSuccessData.aiResult && (
+                    <div className="p-4 bg-well border border-line rounded-md space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-fg">Özgeçmiş değerlendirmesi</span>
+                        <span
+                          className={`badge uppercase tracking-wider ${
+                            AI_STATUS_STYLES[submitSuccessData.aiResult.status] ??
+                            "bg-raised text-fg-soft border-line-strong"
+                          }`}
+                        >
+                          {AI_STATUS_LABELS[submitSuccessData.aiResult.status] ?? submitSuccessData.aiResult.status}
+                        </span>
+                      </div>
+                      <p className="text-fg-soft leading-relaxed">{submitSuccessData.aiResult.reasoning}</p>
                     </div>
-                    <p className="text-zinc-300">{submitSuccessData.aiResult.reasoning}</p>
-                  </div>
-                )}
+                  )}
 
-                <div className="flex justify-center gap-3 pt-2">
-                  <Link
-                    href={`/reports/${submitSuccessData.candidateExtId}`}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-2"
-                  >
-                    <span>📊</span> Kanıt Skorumu & Raporumu Gör &rarr;
-                  </Link>
-                  <Link
-                    href="/candidate/hub"
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center gap-2"
-                  >
-                    <span>🎯</span> Aday Paneline Git &rarr;
-                  </Link>
-                </div>
-              </div>
-            ) : !user?.email ? (
-              <div className="space-y-4 py-2">
-                <div className="p-4 bg-blue-950/30 border border-blue-800/50 rounded-xl text-sm text-zinc-300">
-                  <p className="font-semibold text-white mb-1">Başvurmak için giriş yapın</p>
-                  <p className="text-xs leading-relaxed">
-                    Belgelerinizin başvurunuza bağlanabilmesi için hesabınıza giriş yapmanız gerekiyor.
-                    Hesabınız yoksa kayıt olmanız birkaç saniye sürer.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    href="/login"
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition"
-                  >
-                    Giriş Yap
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
-                  >
-                    Hesap Oluştur
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleApplySubmit} className="space-y-5">
-                {formError && (
-                  <div
-                    role="alert"
-                    className="p-3 bg-red-950/40 border border-red-800 text-red-300 text-xs rounded-xl"
-                  >
-                    {formError}
+                  <div className="flex flex-wrap justify-center gap-3 pt-2">
+                    <Link
+                      href={`/reports/${submitSuccessData.candidateExtId}`}
+                      className="btn btn-brand text-xs px-5 py-2.5"
+                    >
+                      Raporumu ve kanıtlarımı gör
+                      <span aria-hidden="true">&rarr;</span>
+                    </Link>
+                    <Link
+                      href="/candidate/hub"
+                      className="btn btn-quiet text-xs px-5 py-2.5"
+                    >
+                      Aday paneline git
+                    </Link>
                   </div>
-                )}
-                {/* Critical AI Cross-Verification Warning Banner */}
-                <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-xl space-y-2 text-xs text-amber-200">
-                  <div className="flex items-center gap-2 font-bold text-amber-400">
-                    <span>⚠️</span> KRİTİK UYARI: YAPAY ZEKA ÇAPRAZ SORGU & VERİ DOĞRULUĞU
+                </div>
+              ) : !user?.email ? (
+                <div className="space-y-4 py-2">
+                  <div className="p-4 bg-brand/5 border border-brand/20 rounded-md text-sm text-fg-soft">
+                    <p className="font-semibold text-fg mb-1">Başvurmak için giriş yapın</p>
+                    <p className="text-xs leading-relaxed">
+                      Belgelerinizin başvurunuza bağlanabilmesi için hesabınıza giriş yapmanız gerekiyor.
+                      Hesabınız yoksa kayıt olmanız birkaç saniye sürer.
+                    </p>
                   </div>
-                  <p className="leading-relaxed text-zinc-300 text-[11px]">
-                    İşveren, bu platform aracılığıyla sunacağınız özgeçmiş, LinkedIn profili ve ChatGPT konuşma geçmişini Gemini AI servisi üzerinden <strong className="text-amber-300">Çapraz Sorgulamaya (AI Cross-Verification)</strong> ve <strong className="text-amber-300">Karakter / Yetkinlik Doğrulamasına</strong> tabi tutar. Verilen tüm bilgilerin doğruluğu titizlikle taranır. Lütfen sadece <strong className="text-white">gerçek ve dürüst verileri</strong> beyan ediniz.
-                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <Link href="/login" className="btn btn-brand text-xs px-5 py-2.5">
+                      Giriş Yap
+                    </Link>
+                    <Link href="/register" className="btn btn-quiet text-xs px-5 py-2.5">
+                      Hesap Oluştur
+                    </Link>
+                  </div>
                 </div>
+              ) : (
+                <form onSubmit={handleApplySubmit} className="space-y-5">
+                  {formError && (
+                    <div
+                      ref={formErrorRef}
+                      role="alert"
+                      className="p-3 bg-err/10 border border-err/30 text-err text-xs rounded-md"
+                    >
+                      {formError}
+                    </div>
+                  )}
+                  {/* Honesty note — the cross-check is real, so say it plainly, without shouting */}
+                  <div className="p-4 bg-brand/5 border border-brand/20 rounded-md flex gap-3">
+                    <IconHumanReview className="w-9 h-9 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-fg">Dürüstlük burada işe yarar</p>
+                      <p className="text-xs text-fg-soft leading-relaxed">
+                        Sunduğunuz özgeçmiş, profil ve bağlantılar birbirleriyle
+                        çapraz kontrol edilir; tutarsızlıklar raporda görünür
+                        olur. Lütfen yalnızca size ait, gerçek bilgileri ekleyin
+                        — gerçek belgeniz, süslü cümleden her zaman daha
+                        güçlüdür.
+                      </p>
+                    </div>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-                    Aday Adı & Soyadı
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    disabled={submitting}
-                    value={candidateName}
-                    onChange={(e) => setCandidateName(e.target.value)}
-                    placeholder="Örn: Jane Doe"
-                    className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
-                  />
-                </div>
+                  <div>
+                    <label
+                      htmlFor="basvuru-ad-soyad"
+                      className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5"
+                    >
+                      Adınız ve Soyadınız
+                    </label>
+                    <input
+                      id="basvuru-ad-soyad"
+                      type="text"
+                      required
+                      disabled={submitting}
+                      value={candidateName}
+                      onChange={(e) => setCandidateName(e.target.value)}
+                      placeholder="Örn: Ayşe Yılmaz"
+                      className="field"
+                    />
+                  </div>
 
-                {/* Main Resume Upload */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-                    📄 Özgeçmiş, sertifika, ehliyet veya diploma
-                  </label>
-                  <div
-                    onClick={() => !submitting && resumeInputRef.current?.click()}
-                    className={`p-5 border-2 border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 rounded-xl text-center cursor-pointer transition ${submitting ? 'opacity-50 pointer-events-none' : ''}`}
-                  >
+                  {/* Main Resume Upload — a real button so keyboard users can
+                      open the file picker too */}
+                  <div>
+                    <label
+                      htmlFor="basvuru-belge"
+                      className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5"
+                    >
+                      Özgeçmiş, sertifika, ehliyet veya diploma
+                    </label>
                     <input
                       ref={resumeInputRef}
                       type="file"
@@ -471,141 +589,172 @@ export default function JobListingsPage() {
                         setResumeFile(picked);
                       }}
                     />
-                    {resumeFile ? (
-                      <p className="text-emerald-400 text-sm font-semibold">📄 {resumeFile.name} ({(resumeFile.size / 1024).toFixed(1)} KB)</p>
-                    ) : (
-                      <p className="text-zinc-400 text-xs">
-                        Dosyanızı seçmek için <span className="text-blue-400 underline">tıklayın</span> — {DOCUMENT_HINT}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Multi-Industry Evidence Boosters */}
-                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-4">
-                  <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      🚀 Başvuruyu Güçlendirici Mesleki Kanıtlar (İsteğe Bağlı)
-                    </span>
-                    <span className="text-[10px] text-zinc-500">Doğrulanabilir belgeler skorunuzu güçlendirir</span>
-                  </div>
-
-                  {/* LinkedIn URL Input */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>🔗</span> LinkedIn / Profesyonel Profil Bağlantısı
-                    </label>
-                    <input
-                      type="url"
+                    <button
+                      id="basvuru-belge"
+                      type="button"
                       disabled={submitting}
-                      value={linkedinUrl}
-                      onChange={(e) => setLinkedinUrl(e.target.value)}
-                      placeholder="https://linkedin.com/in/aday-profil-adi"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
-                    />
+                      onClick={() => resumeInputRef.current?.click()}
+                      className="w-full p-5 border-2 border-dashed border-line-strong hover:border-brand bg-well rounded-md text-center cursor-pointer transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      {resumeFile ? (
+                        <span className="block text-brand text-sm font-semibold">
+                          {resumeFile.name}{" "}
+                          <span className="text-fg-mute font-normal tabular-nums">
+                            ({(resumeFile.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="block text-fg-mute text-xs">
+                          Dosyanızı seçmek için{" "}
+                          <span className="text-brand underline underline-offset-2">tıklayın</span>{" "}
+                          — {DOCUMENT_HINT}
+                        </span>
+                      )}
+                    </button>
                   </div>
 
-                  {/* Certificate / Driver License Link */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>📜</span> Sertifika / Ehliyet / Mesleki Belge Bağlantısı
-                    </label>
-                    <input
-                      type="url"
-                      disabled={submitting}
-                      value={certificateLink}
-                      onChange={(e) => setCertificateLink(e.target.value)}
-                      placeholder="https://drive.google.com/sertifikam-ehliyetim"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
-                    />
+                  {/* Multi-Industry Evidence Boosters */}
+                  <div className="p-4 bg-well border border-line rounded-md space-y-4">
+                    <div className="flex items-center justify-between gap-3 border-b border-line pb-2">
+                      <span className="text-xs font-semibold text-fg">
+                        Başvuruyu güçlendiren belgeler (isteğe bağlı)
+                      </span>
+                      <span className="text-[10px] text-fg-mute">Doğrulanabilir belgeler değerlendirmeyi güçlendirir</span>
+                    </div>
+
+                    {/* LinkedIn URL Input */}
+                    <div>
+                      <label
+                        htmlFor="basvuru-linkedin"
+                        className="block text-[11px] font-semibold text-fg-soft mb-1"
+                      >
+                        LinkedIn / Profesyonel Profil Bağlantısı
+                      </label>
+                      <input
+                        id="basvuru-linkedin"
+                        type="url"
+                        disabled={submitting}
+                        value={linkedinUrl}
+                        onChange={(e) => setLinkedinUrl(e.target.value)}
+                        placeholder="https://linkedin.com/in/aday-profil-adi"
+                        className="field text-xs"
+                      />
+                    </div>
+
+                    {/* Certificate / Driver License Link */}
+                    <div>
+                      <label
+                        htmlFor="basvuru-sertifika"
+                        className="block text-[11px] font-semibold text-fg-soft mb-1"
+                      >
+                        Sertifika / Ehliyet / Mesleki Belge Bağlantısı
+                      </label>
+                      <input
+                        id="basvuru-sertifika"
+                        type="url"
+                        disabled={submitting}
+                        value={certificateLink}
+                        onChange={(e) => setCertificateLink(e.target.value)}
+                        placeholder="https://drive.google.com/sertifikam-ehliyetim"
+                        className="field text-xs"
+                      />
+                    </div>
+
+                    {/* GitHub / Portfolio Link */}
+                    <div>
+                      <label
+                        htmlFor="basvuru-portfoy"
+                        className="block text-[11px] font-semibold text-fg-soft mb-1"
+                      >
+                        Portföy / Proje / GitHub Bağlantısı
+                      </label>
+                      <input
+                        id="basvuru-portfoy"
+                        type="url"
+                        disabled={submitting}
+                        value={githubUrl}
+                        onChange={(e) => setGithubUrl(e.target.value)}
+                        placeholder="https://portfoyum.com veya https://github.com/proje"
+                        className="field text-xs"
+                      />
+                    </div>
+
+                    {/* ChatGPT JSON Export Upload */}
+                    <div>
+                      <label
+                        htmlFor="basvuru-json"
+                        className="block text-[11px] font-semibold text-fg-soft mb-1"
+                      >
+                        ChatGPT Veri Dışa Aktarım Dosyası (.json)
+                      </label>
+                      <input
+                        ref={jsonInputRef}
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && setChatgptJsonFile(e.target.files[0])}
+                      />
+                      <button
+                        id="basvuru-json"
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => jsonInputRef.current?.click()}
+                        className="w-full py-2 px-3 bg-surface border border-line hover:border-brand/50 rounded-md text-xs text-fg-soft text-left transition-colors flex items-center justify-between gap-3 disabled:opacity-50"
+                      >
+                        <span className="truncate">{chatgptJsonFile ? chatgptJsonFile.name : "conversations.json dosyanızı yükleyin…"}</span>
+                        <span className="text-[10px] text-brand font-semibold shrink-0">Gözat</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* GitHub / Portfolio Link */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>🌐</span> Portföy / Proje / GitHub Bağlantısı
+                  {/* Consent Gate Checkbox */}
+                  <div className="p-4 bg-brand/5 border border-brand/20 rounded-md">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={consentVerified}
+                        onChange={(e) => setConsentVerified(e.target.checked)}
+                        className="mt-1 accent-[var(--brand)] w-4 h-4 shrink-0"
+                      />
+                      <span className="text-xs text-fg-soft leading-relaxed">
+                        <strong className="text-fg">Belgelerimin incelenmesine onay veriyorum.</strong>{" "}
+                        Yüklediğim belgeler bana aittir ve doğrudur. Başvurduğum ilan
+                        kapsamında değerlendirilip sonucun işverenle paylaşılmasını kabul
+                        ediyorum. Belgelerimin metni ve görüntüsü, değerlendirme için Google&apos;ın
+                        yapay zeka servisine (yurt dışına) aktarılır.{" "}
+                        <Link
+                          href="/kvkk"
+                          target="_blank"
+                          className="text-brand underline underline-offset-2 hover:text-brand-strong transition-colors"
+                        >
+                          KVKK aydınlatma metni
+                        </Link>
+                      </span>
                     </label>
-                    <input
-                      type="url"
-                      disabled={submitting}
-                      value={githubUrl}
-                      onChange={(e) => setGithubUrl(e.target.value)}
-                      placeholder="https://portfoyum.com veya https://github.com/proje"
-                      className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500 transition disabled:opacity-50"
-                    />
                   </div>
 
-                  {/* ChatGPT JSON Export Upload */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center gap-1">
-                      <span>🤖</span> ChatGPT Veri Dışa Aktarım Dosyası (.json)
-                    </label>
-                    <input
-                      ref={jsonInputRef}
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      onChange={(e) => e.target.files?.[0] && setChatgptJsonFile(e.target.files[0])}
-                    />
+                  <div className="flex justify-end gap-3 pt-4 border-t border-line">
                     <button
                       type="button"
                       disabled={submitting}
-                      onClick={() => jsonInputRef.current?.click()}
-                      className="w-full py-2 px-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg text-xs text-zinc-300 text-left transition flex items-center justify-between disabled:opacity-50"
+                      onClick={() => setSelectedJob(null)}
+                      className="btn btn-quiet text-xs px-4 py-2.5"
                     >
-                      <span>{chatgptJsonFile ? `🤖 ${chatgptJsonFile.name}` : "ChatGPT export conversations.json yükle..."}</span>
-                      <span className="text-[10px] text-blue-400 font-semibold">Gözat</span>
+                      İptal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="btn btn-brand text-xs px-6 py-3"
+                    >
+                      {submitting ? "Belgeler inceleniyor…" : "Başvuruyu ve Belgeleri Gönder"}
                     </button>
                   </div>
-                </div>
-
-                {/* Consent Gate Checkbox */}
-                <div className="p-4 bg-blue-950/30 border border-blue-800/50 rounded-xl space-y-2">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={consentVerified}
-                      onChange={(e) => setConsentVerified(e.target.checked)}
-                      className="mt-1 accent-blue-500 w-4 h-4"
-                    />
-                    <span className="text-xs text-zinc-300 leading-normal">
-                      <strong className="text-blue-400">Belgelerimin incelenmesine onay veriyorum.</strong>{" "}
-                      Yüklediğim belgeler bana aittir ve doğrudur. Başvurduğum ilan
-                      kapsamında değerlendirilip sonucun işverenle paylaşılmasını kabul
-                      ediyorum. Belgelerimin metni ve görüntüsü, değerlendirme için Google&apos;ın
-                      yapay zeka servisine (yurt dışına) aktarılır.{" "}
-                      <Link
-                        href="/kvkk"
-                        target="_blank"
-                        className="text-blue-400 underline underline-offset-2 hover:text-blue-300"
-                      >
-                        KVKK aydınlatma metni
-                      </Link>
-                    </span>
-                  </label>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedJob(null)}
-                    className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition"
-                  >
-                    İptal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg disabled:opacity-50"
-                  >
-                    {submitting ? "Analiz Ediliyor..." : "Başvuruyu ve Tüm Kanıtları Gönder"}
-                  </button>
-                </div>
-              </form>
-            )}
+                </form>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

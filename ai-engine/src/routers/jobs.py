@@ -94,14 +94,21 @@ def create_job(
 
     job = JobPosting(
         company_id=company_id,
+        # Ownership is recorded so KVKK account deletion can find the
+        # employer's postings later; company_name alone proves nothing.
+        created_by_user_id=user.get("user_id"),
         title=job_in.title,
         description=job_in.description,
         category=job_in.category or "OTHER",
         status=job_in.status or "active",
     )
     session.add(job)
-    session.commit()
-    session.refresh(job)
+    # Flush, don't commit: the id is needed to key the requirement, but the
+    # posting and the criterion it is graded by are one fact. Committing them
+    # separately meant anything that broke the second insert — a colliding
+    # "req_job_<id>" row — left a live, publicly listed posting behind whose
+    # evaluation criterion was somebody else's text.
+    session.flush()
 
     # The AI needs something job-specific to evaluate against; without this the
     # engine fell back to a generic "technical requirement" for every applicant.
@@ -111,6 +118,7 @@ def create_job(
     )
     session.add(requirement)
     session.commit()
+    session.refresh(job)
 
     company = session.get(Company, job.company_id) if job.company_id else None
     return _to_read(job, company)

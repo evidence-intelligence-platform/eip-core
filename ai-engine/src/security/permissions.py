@@ -46,3 +46,5 @@ def _require_role(*allowed: str):
 
 require_employer = _require_role("employer", "admin")
 require_candidate = _require_role("candidate", "admin")
+# Moderation decisions carry legal weight; no other role may make them.
+require_admin = _require_role("admin")

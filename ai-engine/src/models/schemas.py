@@ -22,6 +22,44 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+# 5 MB covers a phone photo of a certificate without letting a 40 MB scan
+# through. Kept here so both the schema and the upload endpoint agree.
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+
+# Magic bytes, because the browser-supplied filename and content-type are
+# both under the caller's control.
+_MAGIC = {
+    "image/jpeg": lambda d: d[:3] == bytes.fromhex("ffd8ff"),
+    "image/png": lambda d: d[:8] == bytes.fromhex("89504e470d0a1a0a"),
+    "image/webp": lambda d: d[:4] == b"RIFF" and d[8:12] == b"WEBP",
+    "application/pdf": lambda d: d[:5] == b"%PDF-",
+}
+
+
+class MediaAttachment(BaseModel):
+    """
+    A document the model should *look at* rather than read as text.
+
+    A construction worker's safety certificate, a nurse's diploma and a
+    driver's licence are usually photographs. Sending only extracted text
+    meant those documents were unreadable — and because the score is
+    verified/total, attaching one actively lowered the candidate's result.
+    """
+    mime_type: Literal["image/jpeg", "image/png", "image/webp", "application/pdf"]
+    data: bytes = Field(..., repr=False, exclude=True)
+    filename: str | None = None
+
+    @model_validator(mode="after")
+    def validate_attachment(self) -> "MediaAttachment":
+        if len(self.data) > MAX_ATTACHMENT_BYTES:
+            raise ValueError(
+                f"Dosya boyutu çok büyük. En fazla {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB."
+            )
+        checker = _MAGIC.get(self.mime_type)
+        if checker and not checker(self.data):
+            raise ValueError("Dosya içeriği belirtilen türle uyuşmuyor.")
+        return self
+
 
 class EvidencePayload(BaseModel):
     """
@@ -36,9 +74,10 @@ class EvidencePayload(BaseModel):
         description="Unique identifier for the candidate (from the Core Zone)."
     )
     source_type: Literal[
-        "GITHUB", "CHATGPT", "LINKEDIN", "PDF_RESUME", 
-        "LINKEDIN_URL", "PORTFOLIO_LINK", "CERTIFICATE_LICENSE", 
-        "CHATGPT_EXPORT", "CASE_STUDY_BLOG"
+        "GITHUB", "CHATGPT", "LINKEDIN", "PDF_RESUME",
+        "LINKEDIN_URL", "PORTFOLIO_LINK", "CERTIFICATE_LICENSE",
+        "CHATGPT_EXPORT", "CASE_STUDY_BLOG",
+        "IMAGE_DOCUMENT", "SCANNED_PDF",
     ] = Field(
         ...,
         description="The type of evidence source. Determines parsing context."
@@ -47,6 +86,11 @@ class EvidencePayload(BaseModel):
         ...,
         max_length=150_000,
         description="Raw evidence content. Max 150,000 characters to prevent LLM abuse."
+    )
+    media: list[MediaAttachment] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Documents to be read visually (photos of certificates, scanned PDFs).",
     )
     consent_verified: bool = Field(
         ...,
@@ -72,12 +116,22 @@ class EvidencePayload(BaseModel):
                 "consent_verified must be True. "
                 "Ref: 01_ENGINEERING_CONSTITUTION.md Article II, Section 1."
             )
+        if not self.raw_data.strip() and not self.media:
+            raise ValueError("Boş kanıt gönderilemez: metin veya belge eklenmelidir.")
         return self
 
 
 class Requirement(BaseModel):
     """A single job requirement to evaluate the candidate against."""
     id: str = Field(..., description="Unique identifier for this requirement.")
+    category: str | None = Field(
+        default=None,
+        description=(
+            "Profession category of the posting. Lets the model apply the right "
+            "evidence standard: a licence number for a driver, a repository for "
+            "a developer — neither ranked above the other."
+        ),
+    )
     description: str = Field(
         ...,
         description="Human-readable description of the requirement being evaluated."
@@ -116,6 +170,21 @@ class ExtractionResult(BaseModel):
             "URL, direct quote, or exact reference to the evidence in the raw data. "
             "Required when status is VERIFIED or CONTRADICTION."
         )
+    )
+
+
+class FileExtractionResult(ExtractionResult):
+    """
+    ExtractionResult for file uploads, plus the moderation verdict.
+
+    A photographed certificate is easy to doctor, so uploaded images and
+    scanned PDFs wait for a human decision ("pending") while text keeps the
+    old behaviour ("approved"). Only adds a field — existing consumers of
+    ExtractionResult keep working unchanged.
+    """
+    review_status: Literal["pending", "approved"] = Field(
+        "approved",
+        description='"pending" when the uploaded document awaits admin review.',
     )
 
 

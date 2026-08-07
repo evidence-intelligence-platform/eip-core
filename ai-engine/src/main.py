@@ -21,27 +21,77 @@ AUDIT FIXES (2026-07-22):
 
 from contextlib import asynccontextmanager
 
+from pydantic import ValidationError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from sqlmodel import Session
 
 from src.db.database import create_db_and_tables, get_session
-from src.db.models import Evidence, Requirement
-from src.models.schemas import EvidencePayload, ExtractionResult, ExtractRequest
+from src.db.models import Candidate, Evidence, JobPosting, Requirement
+from src.models.schemas import (
+    EvidencePayload,
+    ExtractionResult,
+    ExtractRequest,
+    FileExtractionResult,
+    MediaAttachment,
+)
 from src.models.schemas import Requirement as SchemaRequirement
-from src.routers import applications, auth, candidates, jobs, requirements
+from src.routers import applications, auth, candidates, jobs, moderation, requirements
 from src.security.auth import verify_api_key
+from src.security.permissions import CurrentUser, require_user
+from src.services.audit import record_consent
 from src.services.base_llm import BaseLLMService
 from src.services.llm_service import GeminiLLMService
-from src.services.pdf_service import extract_text_from_pdf_bytes
+from src.services.file_policy import MAX_UPLOAD_BYTES, read_upload_limited, sniff_kind
+from src.services.pdf_service import extract_text_from_pdf_bytes, extract_text_or_flag_scanned
+from src.services.storage import sanitize_filename, save_upload
 
-# Initialize Rate Limiter (15 requests/minute per client IP)
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+def _client_ip(request: Request) -> str | None:
+    """
+    The address the caller connected from.
+
+    Every request reaches the engine through the Next.js server-side proxy
+    (only it holds the internal key), so request.client.host is the proxy's own
+    address — identical for every user. The proxy forwards X-Forwarded-For
+    verbatim, and a conforming ingress APPENDS the address it actually saw the
+    client connect from to the RIGHT of whatever the client already sent. The
+    right-most entry is therefore the only one the caller cannot choose; the
+    left-most is attacker-supplied end to end and must never be trusted —
+    recording it would let a candidate write an arbitrary address (even an
+    uninvolved third party's) into the permanent KVKK consent record.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client = forwarded.rsplit(",", 1)[-1].strip()
+        if client:
+            return client
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()
+    return request.client.host if request.client else None
+
+
+def _rate_limit_key(request: Request) -> str:
+    """
+    One rate-limit bucket per end user, not per socket peer.
+
+    get_remote_address keys on request.client.host, which is the proxy's
+    address for every browser request — the entire user base would share a
+    single 60/minute bucket per endpoint and a handful of concurrent users
+    could 429 everyone else, sign-in included. Key on the same forwarded
+    client address the consent log records instead.
+    """
+    return _client_ip(request) or get_remote_address(request)
+
+
+# Initialize Rate Limiter (60 requests/minute per end-user address by default)
+limiter = Limiter(key_func=_rate_limit_key, default_limits=["60/minute"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,6 +154,11 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Without this middleware the default_limits above are dead config: slowapi
+# only applies them to routes that carry no explicit @limiter.limit decorator
+# when SlowAPIMiddleware inspects the request. Decorated routes keep their
+# own (stricter) limits; the middleware skips them.
+app.add_middleware(SlowAPIMiddleware)
 
 
 # Custom EIP Dark Theme Swagger UI Route
@@ -151,6 +206,7 @@ app.include_router(jobs.router)
 app.include_router(applications.router)
 app.include_router(candidates.router)
 app.include_router(requirements.router)
+app.include_router(moderation.router)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM Service Initialization
@@ -158,6 +214,53 @@ app.include_router(requirements.router)
 def get_llm_service() -> BaseLLMService:
     """Dependency injection for the LLM Service."""
     return GeminiLLMService()
+
+
+def _category_for_requirement(requirement_id: str, session: Session) -> str | None:
+    """
+    Resolves the profession category behind a requirement.
+
+    Requirements created for a posting are keyed "req_job_<job id>", so the
+    posting's category can be recovered and handed to the model. Without it
+    every applicant — chef, nurse, driver — was judged by the same yardstick.
+    """
+    if not requirement_id.startswith("req_job_"):
+        return None
+    try:
+        job_id = int(requirement_id.removeprefix("req_job_"))
+    except ValueError:
+        return None
+
+    from sqlmodel import select
+
+    job = session.exec(select(JobPosting).where(JobPosting.id == job_id)).first()
+    return job.category if job else None
+
+
+def _assert_owns_candidate(candidate_id: str, user: CurrentUser, session: Session) -> None:
+    """
+    Binds an extraction to the identity it is filed under.
+
+    Registration is public and external ids are predictable ("cand_<user id>"),
+    so a signed-in stranger could otherwise file evidence for someone else —
+    text evidence is stored "approved", lands straight in that candidate's
+    employer-facing list and moves their score — and have the consent log
+    assert that person authorized the processing. Admins are exempt: the
+    moderation panel already shows them every row.
+    """
+    if user.get("role") == "admin":
+        return
+
+    from sqlmodel import select
+
+    candidate = session.exec(
+        select(Candidate).where(Candidate.external_id == candidate_id)
+    ).first()
+    if candidate is None or candidate.user_id != user.get("user_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="Evidence can only be submitted for your own candidate profile.",
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,18 +280,60 @@ async def extract_evidence(
     extract_req: ExtractRequest,
     session: Session = Depends(get_session),
     llm_service: BaseLLMService = Depends(get_llm_service),
+    user: CurrentUser = Depends(require_user),
 ) -> ExtractionResult:
     """
     Core extraction endpoint. Accepts a structured evidence payload and a requirement.
 
     Authentication: X-Internal-API-Key header required.
     Consent Gate: request.payload.consent_verified must be True (enforced by schema).
+    Ownership: the payload's candidate_id must belong to the caller.
 
     Returns an ExtractionResult with:
     - status: VERIFIED | INSUFFICIENT EVIDENCE | CONTRADICTION
     - reasoning: Mandatory human-readable explanation (non-empty)
     - evidence_pointer: Direct reference to the evidence source
     """
+    # Outside the try block: the blanket `except Exception` below would turn
+    # this 403 into a 500.
+    _assert_owns_candidate(extract_req.payload.candidate_id, user, session)
+
+    # Media invariant (see /api/v1/extract/file): a photographed or scanned
+    # document is trivial to doctor, so it must be kept on disk and start
+    # "pending" until an admin reviews it. This endpoint stores no file, so
+    # accepting attachments here would mint an "approved" row with nothing
+    # for a moderator to inspect — a straight bypass of the review queue.
+    if extract_req.payload.media:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Belge ekleri yalnızca /api/v1/extract/file üzerinden gönderilebilir: "
+                "yüklenen belgeler moderasyon için saklanır ve insan onayı bekler."
+            ),
+        )
+
+    # The description stored under a requirement id is the criterion the model
+    # grades every applicant by (requirements.py reserves "req_job_<n>" for
+    # exactly that reason). The caller may NAME a requirement, never redefine
+    # it: trusting the body's description let a candidate put a real posting's
+    # id on a criterion their own text trivially satisfies and mint an
+    # employer-visible VERIFIED row under that posting — text evidence is
+    # stored "approved", so no moderator ever saw the substituted text. Same
+    # rule as /api/v1/extract/file: when the row exists, the database wins.
+    from sqlmodel import select
+
+    req_db = session.exec(
+        select(Requirement).where(Requirement.external_id == extract_req.requirement.id)
+    ).first()
+    if req_db:
+        extract_req.requirement.description = req_db.description
+        # The evidence standard follows the posting too; a caller-chosen
+        # category would let the applicant pick the yardstick they are
+        # judged by.
+        extract_req.requirement.category = _category_for_requirement(
+            extract_req.requirement.id, session
+        )
+
     try:
         if extract_req.payload.source_type == "CHATGPT_EXPORT":
             import json
@@ -210,6 +355,14 @@ async def extract_evidence(
             evidence_pointer=result.evidence_pointer,
         )
         session.add(db_evidence)
+        # The consent gate has passed (the schema refuses consent_verified
+        # False), so the consent event is recorded in the SAME transaction as
+        # the evidence it authorized — one cannot exist without the other.
+        record_consent(
+            session,
+            candidate_external_id=extract_req.payload.candidate_id,
+            ip_address=_client_ip(request),
+        )
         session.commit()
         session.refresh(db_evidence)
 
@@ -223,9 +376,9 @@ async def extract_evidence(
 
 @app.post(
     "/api/v1/extract/file",
-    response_model=ExtractionResult,
+    response_model=FileExtractionResult,
     dependencies=[Depends(verify_api_key)],
-    summary="Extract evidence from an uploaded file (PDF/TXT)",
+    summary="Extract evidence from an uploaded document (PDF, image or text)",
     tags=["extraction"],
 )
 @limiter.limit("15/minute")
@@ -244,15 +397,17 @@ async def extract_evidence_from_file(
         "PDF_RESUME",
         description="Source type. Defaults to PDF_RESUME for file uploads."
     ),
-    file: UploadFile = File(..., description="PDF or plain text file to analyze."),
+    file: UploadFile = File(..., description="PDF, image (JPG/PNG/WebP) or plain text document."),
     session: Session = Depends(get_session),
     llm_service: BaseLLMService = Depends(get_llm_service),
-) -> ExtractionResult:
+    user: CurrentUser = Depends(require_user),
+) -> FileExtractionResult:
     """
     File-based extraction endpoint. Accepts a PDF or TXT file upload.
 
     Authentication: X-Internal-API-Key header required.
     Consent Gate: consent_verified form field must be True.
+    Ownership: candidate_id must belong to the caller.
 
     Parses the file, constructs an ExtractRequest, and delegates to the same
     LLM service used by the JSON endpoint for consistency.
@@ -263,66 +418,130 @@ async def extract_evidence_from_file(
         req_db = session.exec(
             select(Requirement).where(Requirement.external_id == requirement_id)
         ).first()
-        if not req_db:
-            req_db = Requirement(
-                external_id=requirement_id,
-                description=f"Technical requirement verification for {requirement_id}"
+        # Fall back to a profession-neutral description, and do NOT persist it:
+        # writing "Technical requirement verification" into the database meant a
+        # chef applying for a kitchen role was permanently evaluated against a
+        # technical yardstick.
+        requirement_description = (
+            req_db.description
+            if req_db
+            else "İlanda belirtilen mesleki yeterliliğin belgeyle doğrulanması."
+        )
+        requirement_category = _category_for_requirement(requirement_id, session)
+
+        # Read with a size limit and identify the file by its contents rather
+        # than by a filename the caller controls.
+        content_bytes = await read_upload_limited(file, MAX_UPLOAD_BYTES)
+        kind, mime = sniff_kind(content_bytes, file.filename)
+
+        media: list[MediaAttachment] = []
+        resolved_source = source_type
+
+        if kind == "image":
+            # A photographed certificate has no text layer; the model has to see it.
+            raw_text = f"Yüklenen belge görseli: {file.filename or 'belge'}"
+            media.append(
+                MediaAttachment(mime_type=mime, data=content_bytes, filename=file.filename)
             )
-            session.add(req_db)
-            session.commit()
-            session.refresh(req_db)
-
-        # Parse file content
-        content_bytes = await file.read()
-
-        if file.filename and file.filename.lower().endswith(".pdf"):
-            raw_text = extract_text_from_pdf_bytes(content_bytes)
-        elif file.content_type == "application/pdf":
-            raw_text = extract_text_from_pdf_bytes(content_bytes)
+            resolved_source = "IMAGE_DOCUMENT"
+        elif kind == "pdf":
+            raw_text, is_scanned = extract_text_or_flag_scanned(content_bytes)
+            if is_scanned:
+                # Scanned PDF: hand the file itself over instead of empty text.
+                raw_text = f"Taranmış belge: {file.filename or 'belge.pdf'}"
+                media.append(
+                    MediaAttachment(
+                        mime_type="application/pdf",
+                        data=content_bytes,
+                        filename=file.filename,
+                    )
+                )
+                resolved_source = "SCANNED_PDF"
         else:
-            # Assume UTF-8 text for all other formats
-            raw_text = content_bytes.decode("utf-8", errors="ignore")
+            raw_text = content_bytes.decode("utf-8", errors="replace")
 
         # Build the typed request — schema validation enforces consent gate
-        request = ExtractRequest(
+        extract_req = ExtractRequest(
             payload=EvidencePayload(
                 candidate_id=candidate_id,
-                source_type=source_type,  # type: ignore[arg-type]
+                source_type=resolved_source,  # type: ignore[arg-type]
                 raw_data=raw_text,
+                media=media,
                 consent_verified=consent_verified,
             ),
             requirement=SchemaRequirement(
-                id=req_db.external_id,
-                description=req_db.description,
+                id=requirement_id,
+                description=requirement_description,
+                category=requirement_category,
             ),
         )
 
-        if request.payload.source_type == "CHATGPT_EXPORT":
+        # Consent first — building the request above is what enforces the gate —
+        # then ownership: whose identity this evidence is about to land on.
+        _assert_owns_candidate(extract_req.payload.candidate_id, user, session)
+
+        if extract_req.payload.source_type == "CHATGPT_EXPORT":
             import json
             try:
-                json.loads(request.payload.raw_data)
+                json.loads(extract_req.payload.raw_data)
             except json.JSONDecodeError:
                 raise ValueError("CHATGPT_EXPORT source_type requires valid JSON raw_data")
 
-        result = await llm_service.extract_evidence(request)
+        if extract_req.requirement.category is None:
+            extract_req.requirement.category = _category_for_requirement(
+                extract_req.requirement.id, session
+            )
+
+        result = await llm_service.extract_evidence(extract_req)
+
+        # A photographed or scanned document is trivial to doctor, so it is
+        # kept on disk and starts "pending" until an admin looks at the very
+        # file the model judged. Text needs no human pass and stores no file.
+        review_status = "approved"
+        media_path = media_mime = media_filename = None
+        if media:
+            media_mime = media[0].mime_type
+            media_path = save_upload(content_bytes, media_mime, file.filename or "")
+            media_filename = sanitize_filename(file.filename)
+            review_status = "pending"
 
         db_evidence = Evidence(
-            candidate_external_id=request.payload.candidate_id,
-            requirement_external_id=request.requirement.id,
-            source_type=request.payload.source_type,
+            candidate_external_id=extract_req.payload.candidate_id,
+            requirement_external_id=extract_req.requirement.id,
+            source_type=extract_req.payload.source_type,
             status=result.status,
             confidence_score=result.confidence_score,
             reasoning=result.reasoning,
             evidence_pointer=result.evidence_pointer,
+            review_status=review_status,
+            media_path=media_path,
+            media_mime=media_mime,
+            media_filename=media_filename,
         )
         session.add(db_evidence)
+        # Same-transaction consent record — see /api/v1/extract for rationale.
+        record_consent(
+            session,
+            candidate_external_id=extract_req.payload.candidate_id,
+            ip_address=_client_ip(request),
+        )
         session.commit()
         session.refresh(db_evidence)
 
-        return result
+        return FileExtractionResult(**result.model_dump(), review_status=review_status)
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        # Pydantic's ValidationError does NOT inherit from ValueError, so the
+        # branch below never caught it: a submission without consent — the one
+        # case the gate exists for — surfaced as a 500 instead of a rejection.
+        # Only the messages are forwarded; e.errors() carries the original
+        # exception objects, which are not JSON-serializable.
+        raise HTTPException(
+            status_code=422,
+            detail=[{"msg": err["msg"], "loc": list(err["loc"])} for err in e.errors()],
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

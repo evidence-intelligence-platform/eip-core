@@ -28,7 +28,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 TEST_API_KEY = "eif-test-internal-api-key"
 
-os.environ.setdefault("GEMINI_API_KEY", "test-placeholder-key-not-used-in-unit-tests")
+# setdefault is not enough: CI passes GEMINI_API_KEY through from a secret, so
+# when the secret is unset the variable exists as an empty string and the
+# placeholder is never applied — GeminiLLMService then refuses to start.
+if not os.environ.get("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = "test-placeholder-key-not-used-in-unit-tests"
 os.environ["INTERNAL_API_KEY"] = TEST_API_KEY
 os.environ["DEBUG"] = "false"
 # Point the *production* engine at the same in-memory database as the tests.
@@ -59,6 +63,47 @@ TEST_ENGINE = create_engine(
 
 # Create all registered tables once
 SQLModel.metadata.create_all(TEST_ENGINE)
+
+
+def _seed_fixture_accounts() -> None:
+    """
+    The client fixtures below sign their own JWTs instead of registering, but
+    authentication re-checks that the account behind a token still exists
+    (KVKK deletion must invalidate live tokens), so those identities need
+    real UserAccount rows. They never log in — the hash is a placeholder.
+    """
+    accounts = [
+        (900, "employer@test.local", "employer"),
+        (901, "candidate@test.local", "candidate"),
+        (902, "admin@test.local", "admin"),
+    ]
+    with Session(TEST_ENGINE) as session:
+        for user_id, email, role in accounts:
+            if session.get(models.UserAccount, user_id) is None:
+                session.add(models.UserAccount(
+                    id=user_id,
+                    email=email,
+                    hashed_password="test-fixture-account-no-login",
+                    role=role,
+                ))
+        session.commit()
+
+
+_seed_fixture_accounts()
+
+
+def create_candidate_profile(external_id: str, user_id: int, name: str = "Test Aday") -> None:
+    """
+    Creates a Candidate profile owned by `user_id`.
+
+    Extraction is bound to the caller's own profile — evidence filed under an
+    id the caller does not own is refused — so a test that uploads evidence
+    needs the profile to exist first, exactly as registration creates it in
+    production.
+    """
+    with Session(TEST_ENGINE) as session:
+        session.add(models.Candidate(external_id=external_id, user_id=user_id, name=name))
+        session.commit()
 
 
 def get_test_session():
@@ -104,6 +149,17 @@ def candidate_client():
     headers = {
         "X-Internal-API-Key": TEST_API_KEY,
         "Authorization": f"Bearer {_token_for('candidate', 901, 'candidate@test.local')}",
+    }
+    with TestClient(app, headers=headers) as c:
+        yield c
+
+
+@pytest.fixture(scope="module")
+def admin_client():
+    """TestClient authenticated as an admin — used for moderation tests."""
+    headers = {
+        "X-Internal-API-Key": TEST_API_KEY,
+        "Authorization": f"Bearer {_token_for('admin', 902, 'admin@test.local')}",
     }
     with TestClient(app, headers=headers) as c:
         yield c

@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCandidates, createCandidate, Candidate } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { MagnifierDoc } from "@/components/illustrations";
 
 export default function CandidatesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const isCandidate = user?.role === "candidate";
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -25,7 +26,7 @@ export default function CandidatesPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("An error occurred");
+        setError("Bir hata oluştu.");
       }
     } finally {
       setLoading(false);
@@ -33,8 +34,12 @@ export default function CandidatesPage() {
   };
 
   useEffect(() => {
+    // AuthProvider restores the bearer token in its own mount effect, which
+    // runs *after* this one; fetching while it is still loading would fire
+    // the request without an Authorization header and 401.
+    if (authLoading) return;
     fetchCandidates();
-  }, []);
+  }, [authLoading]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +54,7 @@ export default function CandidatesPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("An error occurred");
+        setError("Bir hata oluştu.");
       }
     } finally {
       setSubmitting(false);
@@ -60,24 +65,19 @@ export default function CandidatesPage() {
   if (isCandidate) {
     return (
       <div className="max-w-2xl mx-auto py-12 px-4 text-center space-y-6">
-        <div className="p-8 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-          <div className="text-4xl">👥</div>
-          <h1 className="text-2xl font-bold text-white">İşveren Aday Havuzu</h1>
-          <p className="text-sm text-zinc-400 leading-relaxed">
+        <div className="card p-8 space-y-4">
+          <MagnifierDoc className="h-28 w-auto mx-auto" />
+          <h1 className="text-title text-fg">Burası işverenlerin aday havuzu</h1>
+          <p className="text-sm text-fg-soft leading-relaxed">
             Bu sayfa işverenlerin başvuran adayları ve yetkinlik raporlarını incelediği alandır. Bir aday olarak kendi profilinizi yönetmek, CV yüklemek ve ilanlara başvurmak için Aday Paneli&apos;ni kullanabilirsiniz.
           </p>
-          <div className="pt-2 flex justify-center gap-4">
-            <Link
-              href="/candidate/hub"
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl transition shadow"
-            >
-              🎯 Aday Paneline Git &rarr;
+          <div className="pt-2 flex flex-wrap justify-center gap-4">
+            <Link href="/candidate/hub" className="btn btn-brand text-xs px-6 py-3">
+              Aday paneline git
+              <span aria-hidden="true">&rarr;</span>
             </Link>
-            <Link
-              href="/jobs"
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-xl transition shadow"
-            >
-              💼 İş İlanlarını İncele &rarr;
+            <Link href="/jobs" className="btn btn-quiet text-xs px-6 py-3">
+              İş ilanlarını incele
             </Link>
           </div>
         </div>
@@ -86,29 +86,37 @@ export default function CandidatesPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Aday Havuzu & Değerlendirme</h1>
-        <p className="text-zinc-400 mt-2 text-sm">Sistemde kayıtlı adayları ve AI tarafından çıkarılan kanıt raporlarını inceleyin.</p>
+    <div className="space-y-8 max-w-6xl mx-auto py-12 px-4">
+      <div className="space-y-3">
+        <p className="eyebrow">İşveren alanı</p>
+        <h1 className="text-title text-fg">Aday havuzu</h1>
+        <p className="text-fg-soft text-sm max-w-2xl">
+          Kayıtlı adayları ve belgeye dayalı değerlendirme raporlarını inceleyin.
+          Her raporda sonucun gerekçesi de yazar.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-4">
-          <h2 className="text-xl font-semibold text-white">Aday Listesi</h2>
+          <h2 className="text-lg font-semibold text-fg tracking-tight">Aday Listesi</h2>
           {loading ? (
-            <p className="text-zinc-400 text-sm">Yükleniyor...</p>
+            <p className="text-fg-soft text-sm">Yükleniyor…</p>
           ) : candidates.length === 0 ? (
-            <p className="text-zinc-500 text-sm">Kayıtlı aday bulunamadı.</p>
+            <p className="text-fg-mute text-sm">Kayıtlı aday bulunamadı.</p>
           ) : (
             <div className="grid gap-4">
               {candidates.map((c) => (
-                <div key={c.external_id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 flex justify-between items-center hover:border-zinc-700 transition">
+                <div key={c.external_id} className="card card-hover p-4 flex justify-between items-center gap-4">
                   <div>
-                    <h3 className="font-medium text-lg text-white">{c.name}</h3>
-                    <p className="text-xs text-zinc-500 font-mono">{c.external_id}</p>
+                    <h3 className="font-medium text-lg text-fg tracking-tight">{c.name}</h3>
+                    <p className="text-xs text-fg-mute font-mono">{c.external_id}</p>
                   </div>
-                  <Link href={`/candidates/${c.external_id}`} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
-                    📊 Rapor & Kanıtlar &rarr;
+                  <Link
+                    href={`/candidates/${c.external_id}`}
+                    className="btn btn-quiet text-xs px-4 py-2 shrink-0"
+                  >
+                    Rapor ve kanıtlar
+                    <span aria-hidden="true">&rarr;</span>
                   </Link>
                 </div>
               ))}
@@ -117,39 +125,45 @@ export default function CandidatesPage() {
         </div>
 
         <div>
-          <div className="p-6 rounded-xl border border-zinc-800 bg-zinc-900 sticky top-8 space-y-4">
-            <h2 className="text-xl font-semibold text-white">Manuel Aday Ekle</h2>
-            {error && <div className="p-3 bg-red-950/40 border border-red-800 text-red-300 rounded-lg text-xs">{error}</div>}
-            
+          <div className="card p-6 sticky top-28 space-y-4">
+            <h2 className="text-lg font-semibold text-fg tracking-tight">Manuel Aday Ekle</h2>
+            {error && (
+              <div role="alert" className="p-3 bg-err/10 border border-err/30 text-err rounded-md text-xs">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Aday ID (External ID)</label>
+                <label htmlFor="aday-id" className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">Aday ID (External ID)</label>
                 <input
+                  id="aday-id"
                   type="text"
                   required
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500"
+                  className="field"
                   placeholder="Örn: cand_001"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Aday Adı & Soyadı</label>
+                <label htmlFor="aday-ad" className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">Aday Adı ve Soyadı</label>
                 <input
+                  id="aday-ad"
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950 focus:border-blue-500"
-                  placeholder="Örn: Jane Doe"
+                  className="field"
+                  placeholder="Örn: Ayşe Yılmaz"
                 />
               </div>
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg text-xs transition disabled:opacity-50"
+                className="btn btn-brand w-full text-xs"
               >
-                {submitting ? "Ekleniyor..." : "Aday Ekle"}
+                {submitting ? "Ekleniyor…" : "Aday Ekle"}
               </button>
             </form>
           </div>

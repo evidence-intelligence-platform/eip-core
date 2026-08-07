@@ -85,6 +85,16 @@ class JobPosting(SQLModel, table=True):
     """Job posting created by employer companies."""
     id: int | None = Field(default=None, primary_key=True)
     company_id: int | None = Field(default=None, foreign_key="company.id")
+    created_by_user_id: int | None = Field(
+        default=None,
+        foreign_key="useraccount.id",
+        index=True,
+        description=(
+            "Employer account that created the posting. Nullable because rows "
+            "created before ownership tracking have no known owner; KVKK "
+            "account deletion needs this to know which postings to erase."
+        ),
+    )
     title: str = Field(index=True)
     description: str
     category: str = Field(
@@ -115,6 +125,16 @@ class Evidence(SQLModel, table=True):
     confidence_score: int | None = None
     reasoning: str
     evidence_pointer: str | None = None
+    # Human moderation. Uploaded images and scanned PDFs are trivial to
+    # doctor, so they start "pending" until an admin decides; plain text and
+    # text-layer PDFs stay "approved". Values: pending | approved | rejected.
+    review_status: str = Field(default="approved", index=True)
+    media_path: str | None = None  # relative path inside UPLOAD_DIR
+    media_mime: str | None = None
+    media_filename: str | None = None  # original upload name, sanitized, display only
+    reviewed_by: str | None = None  # email of the deciding admin
+    reviewed_at: datetime | None = None
+    review_note: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

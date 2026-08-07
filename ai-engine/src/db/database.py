@@ -34,7 +34,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///database.db")
 # Never log all SQL queries in production — potential data leakage.
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
 
-engine = create_engine(DATABASE_URL, echo=DEBUG_MODE)
+# SQLite refuses to share a connection across threads by default, and the
+# TestClient (like any threaded server) hands requests to worker threads.
+# Other drivers reject this argument, so it is SQLite-only.
+_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, echo=DEBUG_MODE, connect_args=_connect_args)
 
 
 def create_db_and_tables() -> None:

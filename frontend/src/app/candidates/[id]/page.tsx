@@ -3,16 +3,48 @@
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { getReportData, ReportData } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { SealMark } from "@/components/illustrations";
+
+const AI_STATUS_LABELS: Record<string, string> = {
+  VERIFIED: "Doğrulandı",
+  "INSUFFICIENT EVIDENCE": "Yetersiz Kanıt",
+  CONTRADICTION: "Çelişki",
+};
+
+// Human review outcome. Employers only ever receive approved rows; the
+// owning candidate also sees pending/rejected ones, so those states must
+// be visible instead of wearing the plain AI badge.
+const REVIEW_BADGES: Record<string, { label: string; className: string }> = {
+  pending: { label: "İncelemede", className: "bg-warn/10 text-warn border-warn/30" },
+  rejected: { label: "Reddedildi", className: "bg-err/10 text-err border-err/30" },
+};
+
+const REVIEW_NOTES: Record<string, { className: string; text: string }> = {
+  pending: {
+    className: "bg-warn/10 border-warn/30 text-warn",
+    text: "Bu belge ekibimiz tarafından kontrol ediliyor; onaylanana kadar işverene gösterilmez ve skora katılmaz.",
+  },
+  rejected: {
+    className: "bg-err/10 border-err/30 text-err",
+    text: "Bu belge, ekibimizin incelemesi sonucunda onaylanmadı; işverene gösterilmiyor ve skora katılmıyor. Daha net bir kopya yükleyerek yeniden deneyebilirsiniz.",
+  },
+};
 
 export default function CandidateProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const candidateId = resolvedParams.id;
+  const { loading: authLoading } = useAuth();
 
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // AuthProvider restores the bearer token in its own mount effect, which
+    // runs *after* this one; fetching while it is still loading would fire
+    // the request without an Authorization header and 401.
+    if (authLoading) return;
     async function load() {
       try {
         setLoading(true);
@@ -29,20 +61,20 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       }
     }
     load();
-  }, [candidateId]);
+  }, [authLoading, candidateId]);
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto py-20 text-center text-zinc-400 text-sm">
-        Profesyonel Aday Portföyü Yükleniyor...
+      <div className="max-w-4xl mx-auto py-20 text-center text-fg-soft text-sm">
+        Aday profili yükleniyor…
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 bg-red-950/40 border border-red-800 text-red-300 text-sm rounded-xl text-center">
-        ❌ {error || "Aday profili bulunamadı."}
+      <div role="alert" className="max-w-md mx-auto my-12 p-6 bg-err/10 border border-err/30 text-err text-sm rounded-md text-center">
+        {error || "Aday profili bulunamadı."}
       </div>
     );
   }
@@ -53,77 +85,103 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     <div className="space-y-8 max-w-4xl mx-auto py-8 px-4">
       {/* Back Link */}
       <div>
-        <Link href="/candidates" className="text-xs text-blue-400 hover:underline font-semibold flex items-center gap-1">
+        <Link
+          href="/candidates"
+          className="text-xs text-fg-mute hover:text-fg font-semibold flex items-center gap-1 transition-colors"
+        >
           &larr; Aday Havuzuna Dön
         </Link>
       </div>
 
       {/* Profile Header Card */}
-      <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl space-y-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
+      <div className="card p-8 space-y-6 relative overflow-hidden">
+        <SealMark className="absolute -right-8 -top-8 w-40 h-40 opacity-[0.06] pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold text-2xl shadow-lg">
+              <div
+                className="w-14 h-14 rounded-lg bg-brand/10 border border-brand/30 flex items-center justify-center text-brand font-semibold text-2xl"
+                aria-hidden="true"
+              >
                 {candidate.name.charAt(0).toUpperCase()}
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">{candidate.name}</h1>
-                <p className="text-xs font-mono text-blue-400">{candidate.external_id}</p>
+                <h1 className="text-2xl font-semibold text-fg tracking-tight text-balance">{candidate.name}</h1>
+                <p className="text-xs font-mono text-fg-mute">{candidate.external_id}</p>
               </div>
             </div>
-            <p className="text-xs text-zinc-400 pt-1">
-              Doğrulanmış Profesyonel Kariyer Portföyü & AI Yetkinlik Kanıtları
+            <p className="text-xs text-fg-soft pt-1">
+              Belgeye dayalı aday profili — her sonuç, gerekçesiyle birlikte.
             </p>
           </div>
 
-          <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl text-center space-y-1 min-w-[140px]">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Doğrulama Skoru</span>
-            <p className="text-3xl font-extrabold text-emerald-400">{summary.score}%</p>
-            <span className="text-[9px] text-zinc-500 block">{summary.verified} / {summary.total} Kanıt Doğrulandı</span>
+          <div className="p-4 bg-well border border-line rounded-md text-center space-y-1 min-w-[140px]">
+            <span className="text-[10px] uppercase font-semibold tracking-wider text-fg-mute block">Doğrulama Skoru</span>
+            <p className="text-3xl font-semibold text-brand tabular-nums">%{summary.score}</p>
+            <span className="text-[10px] text-fg-mute block tabular-nums">{summary.verified} / {summary.total} kanıt doğrulandı</span>
           </div>
         </div>
       </div>
 
       {/* Verified Evidences Timeline */}
       <div className="space-y-4">
-        <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-          <span>🏆</span> AI Tarafından Doğrulanmış Mesleki Kanıtlar ({evidences.length})
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-fg tracking-tight text-balance">
+            Değerlendirilmiş Mesleki Kanıtlar
+          </h2>
+          <span className="badge bg-raised text-fg-soft border-line-strong tabular-nums">
+            {evidences.length} kanıt
+          </span>
+        </div>
 
         {evidences.length === 0 ? (
-          <div className="p-8 text-center bg-zinc-900/40 border border-zinc-800 rounded-xl text-zinc-400 text-sm">
+          <div className="card p-8 text-center text-fg-soft text-sm">
             Bu aday için henüz kayıtlı bir kanıt bulunamadı.
           </div>
         ) : (
           <div className="space-y-4">
             {evidences.map((ev) => (
-              <div key={ev.id} className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-3 hover:border-zinc-700 transition shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-zinc-950 text-blue-400 font-bold border border-zinc-800">
+              <div key={ev.id} className="card card-hover p-6 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-sm bg-well text-fg-soft border border-line">
                     {ev.requirement_external_id}
                   </span>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                      ev.status === "VERIFIED"
-                        ? "bg-emerald-950 text-emerald-400 border-emerald-800"
-                        : ev.status === "CONTRADICTION"
-                        ? "bg-red-950 text-red-400 border-red-800"
-                        : "bg-amber-950 text-amber-400 border-amber-800"
-                    }`}
-                  >
-                    {ev.status}
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span
+                      className={`badge uppercase tracking-wider ${
+                        ev.status === "VERIFIED"
+                          ? "bg-ok/10 text-ok border-ok/30"
+                          : ev.status === "CONTRADICTION"
+                          ? "bg-err/10 text-err border-err/30"
+                          : "bg-warn/10 text-warn border-warn/30"
+                      }`}
+                    >
+                      {AI_STATUS_LABELS[ev.status] ?? ev.status}
+                    </span>
+                    {ev.review_status && REVIEW_BADGES[ev.review_status] && (
+                      <span
+                        className={`badge uppercase tracking-wider ${REVIEW_BADGES[ev.review_status].className}`}
+                      >
+                        {REVIEW_BADGES[ev.review_status].label}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
+                {ev.review_status && REVIEW_NOTES[ev.review_status] && (
+                  <div className={`text-xs p-3 border rounded-md ${REVIEW_NOTES[ev.review_status].className}`}>
+                    {REVIEW_NOTES[ev.review_status].text}
+                  </div>
+                )}
+
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-zinc-300">AI Değerlendirme Gerekçesi:</p>
-                  <p className="text-sm text-zinc-400 leading-relaxed">{ev.reasoning}</p>
+                  <p className="text-xs font-semibold text-fg-soft">Değerlendirme gerekçesi</p>
+                  <p className="text-sm text-fg-soft leading-relaxed">{ev.reasoning}</p>
                 </div>
 
                 {ev.evidence_pointer && (
-                  <div className="p-3 bg-zinc-950 border-l-4 border-emerald-500 text-xs font-mono text-emerald-400 rounded-r-lg">
+                  <div className="p-3 bg-well border-l-2 border-brand text-xs font-mono text-fg-soft rounded-r-md break-all">
                     &ldquo;{ev.evidence_pointer}&rdquo;
                   </div>
                 )}

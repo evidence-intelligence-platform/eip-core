@@ -11,12 +11,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
 from src.db.database import get_session
 from src.db.models import Candidate, JobApplication, JobPosting
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer, require_user
+from src.services.audit import record_audit
 
 router = APIRouter(
     prefix="/api/v1/applications",
@@ -42,6 +43,11 @@ class JobApplicationRead(BaseModel):
     created_at: datetime
     candidate_external_id: str | None = None
     candidate_name: str | None = None
+    # Whether *this caller* may decide the application, mirroring the PATCH
+    # guard below. Employers are shown ownerless (created_by_user_id IS NULL)
+    # postings' applications but the PATCH always 403s them; without this flag
+    # the dashboard could not tell and rendered dead accept/decline buttons.
+    decidable: bool = False
 
 
 @router.get("/", response_model=list[JobApplicationRead], summary="List job applications")
@@ -54,14 +60,40 @@ def list_applications(
 
     Previously this returned the whole table to anyone, so every candidate saw
     every other candidate's applications and their accept/decline status.
+
+    Employers are scoped too: this list carries applicant names and external
+    ids, so an unscoped listing handed every employer their competitors'
+    entire pipelines. An employer now sees only applications into postings
+    they created — plus postings with no recorded creator (see below).
+    Admins see everything.
     """
-    query = select(JobApplication, Candidate).join(
-        Candidate, Candidate.id == JobApplication.candidate_id, isouter=True
+    # JobPosting is selected too so each row can carry `decidable`: whether
+    # the PATCH below would let *this caller* decide it. The two routes must
+    # agree, or the list shows applications the caller can only 403 on.
+    query = (
+        select(JobApplication, Candidate, JobPosting)
+        .join(Candidate, Candidate.id == JobApplication.candidate_id, isouter=True)
+        .join(JobPosting, JobPosting.id == JobApplication.job_id, isouter=True)
     )
 
-    if user.get("role") == "candidate":
+    role = user.get("role")
+    if role == "candidate":
         # A candidate only ever sees their own applications.
         query = query.where(Candidate.user_id == user.get("user_id"))
+    elif role != "admin":
+        # Employer scope: own postings, plus postings that predate ownership
+        # tracking (created_by_user_id IS NULL). Transitional by design —
+        # pre-ownership postings have no attributable owner, and hiding them
+        # would blank out existing demo/legacy employer dashboards overnight.
+        # The posting itself must exist (this used to be an inner join): a
+        # NULL from a dangling job_id must not pass as "pre-ownership".
+        query = query.where(
+            JobPosting.id.is_not(None),
+            or_(
+                JobPosting.created_by_user_id == user.get("user_id"),
+                JobPosting.created_by_user_id.is_(None),
+            ),
+        )
 
     rows = session.exec(query).all()
     return [
@@ -73,14 +105,40 @@ def list_applications(
             created_at=app.created_at,
             candidate_external_id=cand.external_id if cand else None,
             candidate_name=cand.name if cand else None,
+            # Mirror of update_application_status's guard: admins decide
+            # anything; employers only postings they created — an ownerless
+            # posting (created_by_user_id IS NULL) is visible but never
+            # decidable by an employer; candidates cannot decide at all.
+            decidable=(
+                role == "admin"
+                or (
+                    role != "candidate"
+                    and job is not None
+                    and job.created_by_user_id == user.get("user_id")
+                )
+            ),
         )
-        for app, cand in rows
+        for app, cand, job in rows
     ]
+
+
+class ApplicationCreate(BaseModel):
+    """
+    What a caller may set when applying.
+
+    The table model must never be the request body: "accepted"/"declined" is
+    the employer's verdict, so a candidate able to set it would mint a
+    pre-accepted application and walk straight past the employer-only PATCH
+    below. The id and the timestamp are the database's to hand out.
+    """
+    candidate_id: int
+    job_id: int
+    status: Literal["submitted", "reviewing"] = "submitted"
 
 
 @router.post("/", response_model=JobApplication, status_code=status.HTTP_201_CREATED, summary="Submit a job application")
 def create_application(
-    app_in: JobApplication,
+    app_in: ApplicationCreate,
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_user),
 ) -> JobApplication:
@@ -89,6 +147,17 @@ def create_application(
     if not candidate:
         raise HTTPException(status_code=404, detail=f"Candidate ID {app_in.candidate_id} not found.")
 
+    # An application is filed under an identity, and candidate ids are small
+    # sequential integers: without this a signed-in stranger could apply in a
+    # rival's name — the employer dashboard then shows that person's real name
+    # and external_id — or spam-apply to sabotage them, and the row records
+    # nothing about who actually submitted it. Admins are exempt, as elsewhere.
+    if user.get("role") != "admin" and candidate.user_id != user.get("user_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="Applications can only be submitted for your own candidate profile.",
+        )
+
     job = session.exec(select(JobPosting).where(JobPosting.id == app_in.job_id)).first()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job Posting ID {app_in.job_id} not found.")
@@ -96,7 +165,7 @@ def create_application(
     application = JobApplication(
         candidate_id=app_in.candidate_id,
         job_id=app_in.job_id,
-        status=app_in.status or "submitted",
+        status=app_in.status,
     )
     session.add(application)
     session.commit()
@@ -120,11 +189,33 @@ def update_application_status(
     if not application:
         raise HTTPException(status_code=404, detail=f"Application ID {app_id} not found.")
 
+    # Whose pipeline is this? Application ids are small sequential integers and
+    # the decision below is irreversible, so with the role check alone any
+    # employer account could decline a competitor's applicants — a rejection
+    # the candidate's actual employer never issued and cannot undo. The
+    # posting records its creator; that is the boundary.
+    if user.get("role") != "admin":
+        job = session.get(JobPosting, application.job_id)
+        if job is None or job.created_by_user_id != user.get("user_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="Applications can only be decided by the employer who posted the job.",
+            )
+
     if application.status in ["accepted", "declined"]:
         raise HTTPException(status_code=409, detail="Application already processed. Cannot update status again.")
 
     application.status = status_update.status
     session.add(application)
+    # An accept/decline is a legally relevant, irreversible decision about a
+    # person: same-transaction audit row, exactly as moderation verdicts do —
+    # the record lives or dies with the decision it describes.
+    record_audit(
+        session,
+        actor_id=user.get("sub", "unknown"),
+        action=f"application.decision.{status_update.status}",
+        target_entity=f"application:{app_id}",
+    )
     session.commit()
     session.refresh(application)
     return application

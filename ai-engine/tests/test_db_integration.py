@@ -14,10 +14,10 @@ To run: python -m pytest tests/test_db_integration.py -v
 from sqlmodel import Session, select
 
 from src.db.models import Evidence
-from tests.conftest import TEST_ENGINE
+from tests.conftest import TEST_ENGINE, create_candidate_profile
 
 
-def test_extract_evidence_saves_to_db(client):
+def test_extract_evidence_saves_to_db(candidate_client):
     """
     Verify the full extraction pipeline:
     1. POST /api/v1/extract with valid authenticated request
@@ -42,6 +42,9 @@ def test_extract_evidence_saves_to_db(client):
 
     main_module.app.dependency_overrides[main_module.get_llm_service] = lambda: MockLLMService()
 
+    # Evidence is only accepted for a profile the caller owns.
+    create_candidate_profile("cand_db_test_456", user_id=901)
+
     try:
         payload = {
             "payload": {
@@ -56,7 +59,7 @@ def test_extract_evidence_saves_to_db(client):
             }
         }
 
-        response = client.post("/api/v1/extract", json=payload)
+        response = candidate_client.post("/api/v1/extract", json=payload)
 
     finally:
         # Always restore — test isolation

@@ -1,5 +1,8 @@
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from src.db.database import get_session
@@ -21,16 +24,45 @@ def list_requirements(
     requirements = session.exec(select(Requirement)).all()
     return requirements
 
+class RequirementCreate(BaseModel):
+    """
+    What a caller may set when creating a requirement.
+
+    The table model must never be the request body (same rule as
+    ApplicationCreate in applications.py): binding Requirement directly left
+    `id` and `created_at` client-settable, so a caller could pick a primary
+    key — colliding with (or squatting) the id the database would hand out
+    next — and forge the creation timestamp.
+    """
+    external_id: str
+    description: str
+
+
 @router.post("/", response_model=Requirement)
 def create_requirement(
-    requirement: Requirement,
+    requirement: RequirementCreate,
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_employer),
 ):
+    # "req_job_<n>" is the server-issued namespace: publishing a posting mints
+    # exactly that id, and the extraction prompt grades every applicant against
+    # the description stored under it. Left open, an employer could pre-claim a
+    # competitor's next posting id — choosing the text the model judges by, and
+    # breaking the publish that would have created it. Same rule as the
+    # reserved "cand_<n>" namespace (candidates.py).
+    if re.fullmatch(r"req_job_\d+", requirement.external_id):
+        raise HTTPException(
+            status_code=403,
+            detail="This external_id is reserved for job postings.",
+        )
     existing = session.exec(select(Requirement).where(Requirement.external_id == requirement.external_id)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Requirement with this external_id already exists")
-    session.add(requirement)
+    row = Requirement(
+        external_id=requirement.external_id,
+        description=requirement.description,
+    )
+    session.add(row)
     session.commit()
-    session.refresh(requirement)
-    return requirement
+    session.refresh(row)
+    return row

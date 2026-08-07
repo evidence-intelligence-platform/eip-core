@@ -173,6 +173,21 @@ class ExtractionResult(BaseModel):
     )
 
 
+class FileExtractionResult(ExtractionResult):
+    """
+    ExtractionResult for file uploads, plus the moderation verdict.
+
+    A photographed certificate is easy to doctor, so uploaded images and
+    scanned PDFs wait for a human decision ("pending") while text keeps the
+    old behaviour ("approved"). Only adds a field — existing consumers of
+    ExtractionResult keep working unchanged.
+    """
+    review_status: Literal["pending", "approved"] = Field(
+        "approved",
+        description='"pending" when the uploaded document awaits admin review.',
+    )
+
+
 class ExtractRequest(BaseModel):
     """The top-level request envelope sent to the extraction endpoint."""
     payload: EvidencePayload

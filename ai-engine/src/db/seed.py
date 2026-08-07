@@ -70,6 +70,10 @@ def seed_database():
 
         alice = Candidate(
             external_id="cand_alice_chen",
+            # Ownership, exactly as registration records it: /auth/me hands
+            # this profile to the account, and evidence is only accepted for a
+            # profile the caller owns.
+            user_id=cand1_user.id,
             name="Alice Chen",
             consent_granted=True,
             created_at=datetime.utcnow()
@@ -147,7 +151,11 @@ def seed_database():
             category="EDUCATION",
             status="active",
         )
+        # Ownership, exactly as create_job records it: accepting or declining a
+        # posting's applications is reserved to the employer who posted it, so
+        # demo postings with no known creator could never be decided.
         for job in (job1, job2, job3, job4, job5, job6):
+            job.created_by_user_id = emp_user.id
             session.add(job)
         session.commit()
 

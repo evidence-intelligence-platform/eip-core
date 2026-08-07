@@ -23,6 +23,10 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlmodel import Session, select
+
+from src.db.database import get_session
+from src.db.models import UserAccount
 
 load_dotenv()
 
@@ -160,10 +164,17 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def get_current_user_payload(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """
     FastAPI dependency to extract and verify the current authenticated user JWT payload.
+
+    A valid signature is not enough: tokens are stateless and live for 24
+    hours, so after a KVKK account deletion the old JWT would otherwise keep
+    working — and could even recreate data for the erased identity. The
+    account behind the token is therefore re-checked on every request, and the
+    role is taken from that row rather than from the token's stale claim.
     """
     if not credentials or not credentials.credentials:
         raise HTTPException(
@@ -171,4 +182,20 @@ def get_current_user_payload(
             detail="Authentication token required. Header format: 'Authorization: Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return decode_access_token(credentials.credentials)
+    payload = decode_access_token(credentials.credentials)
+
+    account = session.exec(
+        select(UserAccount).where(UserAccount.email == payload.get("sub"))
+    ).first()
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired JWT token: account no longer exists",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # The role claim was frozen when the token was issued, so a promotion or
+    # demotion took up to 24 hours (or a manual sign-out) to reach the API —
+    # while /auth/me already reported the new role and the UI unlocked on it.
+    # The account row is loaded here anyway: make it the single authority.
+    payload["role"] = account.role
+    return payload

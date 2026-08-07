@@ -51,3 +51,6 @@ venv/
 backups/
 ai-engine/backups/
 
+# uploaded evidence documents awaiting moderation (candidate PII — never commit)
+uploads/
+

@@ -18,6 +18,8 @@ import pytest
 
 def test_create_and_list_candidates(client):
     """Verify that creating a candidate persists it and the list endpoint returns it."""
+    from tests.conftest import link_candidate_to_employer
+
     ext_id = f"cand_router_test_{uuid.uuid4()}"
     resp = client.post("/api/v1/candidates/", json={
         "external_id": ext_id,
@@ -27,6 +29,10 @@ def test_create_and_list_candidates(client):
     data = resp.json()
     assert data["name"] == "Jane Doe"
     assert data["external_id"] == ext_id
+
+    # The roster is need-to-know now: an employer sees a candidate only once
+    # that candidate has applied to one of the employer's postings.
+    link_candidate_to_employer(ext_id, employer_user_id=900)
 
     resp = client.get("/api/v1/candidates/")
     assert resp.status_code == 200

@@ -12,7 +12,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
@@ -27,6 +27,7 @@ from src.db.models import (
     Requirement,
     UserAccount,
 )
+from src.rate_limit import limiter
 from src.security.auth import verify_api_key
 from src.security.jwt import create_access_token, get_current_user_payload, hash_password, verify_password
 from src.services.audit import anonymize_identifier, record_audit
@@ -60,7 +61,7 @@ router = APIRouter(
 
 class RegisterRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., min_length=6, description="Password (min 6 chars)")
+    password: str = Field(..., min_length=8, description="Password (min 8 chars)")
     # "admin" is deliberately not selectable: the endpoint is public, so
     # anyone could have granted themselves administrator rights.
     role: Literal["employer", "candidate"] = Field("candidate", description="User role")
@@ -95,24 +96,33 @@ class UserProfileResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user (Employer or Candidate)",
 )
+# Sign-up is a write that also seeds the candidate pool; cap it so the
+# "email already exists" reply cannot be used to enumerate the whole user
+# base, and so a script cannot mass-create accounts.
+@limiter.limit("10/minute")
 def register_user(
-    request: RegisterRequest,
+    request: Request,
+    data: RegisterRequest,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> AuthTokenResponse:
     """Registers a new UserAccount and auto-generates a Candidate profile if role is 'candidate'."""
-    existing = session.exec(select(UserAccount).where(UserAccount.email == request.email)).first()
+    existing = session.exec(select(UserAccount).where(UserAccount.email == data.email)).first()
     if existing:
+        # This does reveal that the address is taken — but the person is
+        # creating THEIR OWN account, so "you already have an account, sign
+        # in instead" is the helpful answer. The rate limit above is what
+        # stops that reply from becoming a bulk enumeration oracle.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User with email '{request.email}' already exists."
+            detail=f"User with email '{data.email}' already exists."
         )
 
-    hashed_pw = hash_password(request.password)
+    hashed_pw = hash_password(data.password)
     user = UserAccount(
-        email=request.email,
+        email=data.email,
         hashed_password=hashed_pw,
-        role=request.role,
+        role=data.role,
     )
     session.add(user)
     # flush, not commit: user.id is needed to mint the candidate identity
@@ -121,7 +131,7 @@ def register_user(
     session.flush()
 
     # If role is candidate, create the server-owned Candidate record
-    if request.role == "candidate":
+    if data.role == "candidate":
         ext_id = f"cand_{user.id}"
         existing_cand = session.exec(select(Candidate).where(Candidate.external_id == ext_id)).first()
         if existing_cand:
@@ -141,7 +151,7 @@ def register_user(
         cand = Candidate(
             external_id=ext_id,
             user_id=user.id,
-            name=request.full_name or request.email.split('@')[0],
+            name=data.full_name or data.email.split('@')[0],
             # Consent is captured per submission, not granted at signup.
             consent_granted=False,
         )
@@ -152,7 +162,7 @@ def register_user(
 
     # Best-effort, after the response: registration must never fail or slow
     # down because the mail provider is down (or not configured yet).
-    subject, html = welcome_email(request.full_name or request.email.split("@")[0])
+    subject, html = welcome_email(data.full_name or data.email.split("@")[0])
     background_tasks.add_task(send_email, user.email, subject, html)
 
     token = create_access_token({"sub": user.email, "user_id": user.id, "role": user.role})
@@ -168,13 +178,18 @@ def register_user(
     response_model=AuthTokenResponse,
     summary="Authenticate user and return JWT Access Token",
 )
+# Tight limit: this is the credential-guessing endpoint. 10/min per end-user
+# address makes online password spraying impractical without locking out a
+# genuine user who fat-fingers their password a few times.
+@limiter.limit("10/minute")
 def login_user(
-    request: LoginRequest,
+    request: Request,
+    data: LoginRequest,
     session: Session = Depends(get_session),
 ) -> AuthTokenResponse:
     """Authenticates credentials and issues a JWT token."""
-    user = session.exec(select(UserAccount).where(UserAccount.email == request.email)).first()
-    if not user or not verify_password(request.password, user.hashed_password):
+    user = session.exec(select(UserAccount).where(UserAccount.email == data.email)).first()
+    if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
@@ -225,7 +240,7 @@ class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=16, description="Reset token from the e-mailed link")
     # Same policy as registration: the reset path must not accept a password
     # that /register would reject.
-    new_password: str = Field(..., min_length=6, description="New password (min 6 chars)")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 chars)")
 
 
 class MessageResponse(BaseModel):
@@ -238,8 +253,10 @@ class MessageResponse(BaseModel):
     status_code=status.HTTP_202_ACCEPTED,
     summary="Request a password reset link by e-mail",
 )
+@limiter.limit("5/minute")
 def forgot_password(
-    request: ForgotPasswordRequest,
+    request: Request,
+    data: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> MessageResponse:
@@ -249,13 +266,14 @@ def forgot_password(
 
     When the account exists, a single-use token (30 min TTL) is stored as a
     SHA-256 hash and the plaintext goes out by e-mail only. Repeated requests
-    inside the cooldown window are silently ignored.
+    inside the cooldown window are silently ignored. The 5/min cap adds a
+    second wall against using this endpoint to probe addresses in bulk.
     """
     generic = MessageResponse(
         message="Bu adrese kayıtlı bir hesap varsa, şifre sıfırlama bağlantısı gönderildi."
     )
 
-    user = session.exec(select(UserAccount).where(UserAccount.email == request.email)).first()
+    user = session.exec(select(UserAccount).where(UserAccount.email == data.email)).first()
     if not user:
         return generic
 
@@ -296,19 +314,22 @@ def forgot_password(
     response_model=MessageResponse,
     summary="Set a new password using an e-mailed reset token",
 )
+@limiter.limit("10/minute")
 def reset_password(
-    request: ResetPasswordRequest,
+    request: Request,
+    data: ResetPasswordRequest,
     session: Session = Depends(get_session),
 ) -> MessageResponse:
     """
     Consumes a valid token and replaces the account password. The token row is
     marked used and every other outstanding token of the same account dies
-    with it — a leaked older e-mail must not stay a working backdoor.
+    with it — a leaked older e-mail must not stay a working backdoor. The
+    10/min cap stops brute-forcing the reset token itself.
     """
     now = datetime.utcnow()
     token_row = session.exec(
         select(PasswordResetToken).where(
-            PasswordResetToken.token_hash == _hash_reset_token(request.token)
+            PasswordResetToken.token_hash == _hash_reset_token(data.token)
         )
     ).first()
 
@@ -333,7 +354,7 @@ def reset_password(
             ),
         )
 
-    user.hashed_password = hash_password(request.new_password)
+    user.hashed_password = hash_password(data.new_password)
     token_row.used_at = now
     session.add(user)
     session.add(token_row)

@@ -360,7 +360,10 @@ def _create_candidate(user_id: int | None = None) -> str:
 
 def test_employer_sees_only_approved_evidence(client):
     """Pending AND rejected uploads must never reach an employer's report."""
+    from tests.conftest import link_candidate_to_employer
+
     ext_id = _create_candidate()
+    link_candidate_to_employer(ext_id, employer_user_id=900)  # the applicant relationship
     approved_id = _insert_evidence(candidate_external_id=ext_id, review_status="approved")
     _insert_evidence(candidate_external_id=ext_id, review_status="pending")
     _insert_evidence(candidate_external_id=ext_id, review_status="rejected")
@@ -415,7 +418,10 @@ def test_evidences_endpoint_hides_moderation_internals(client, candidate_client)
     belong to the moderation panel only — the public endpoint must not
     serialize them, not even to the candidate who owns the evidence.
     """
+    from tests.conftest import link_candidate_to_employer
+
     ext_id = _create_candidate(user_id=901)
+    link_candidate_to_employer(ext_id, employer_user_id=900)  # employer 'client' is an applicant's employer
     _insert_evidence(
         candidate_external_id=ext_id,
         review_status="approved",

@@ -27,10 +27,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 from sqlmodel import Session
 
 from src.db.database import create_db_and_tables, get_session
@@ -43,6 +42,8 @@ from src.models.schemas import (
     MediaAttachment,
 )
 from src.models.schemas import Requirement as SchemaRequirement
+from src.rate_limit import client_ip as _client_ip
+from src.rate_limit import limiter
 from src.routers import applications, auth, candidates, jobs, moderation, requirements
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_user
@@ -71,46 +72,8 @@ if _SENTRY_DSN:
     )
 
 
-def _client_ip(request: Request) -> str | None:
-    """
-    The address the caller connected from.
-
-    Every request reaches the engine through the Next.js server-side proxy
-    (only it holds the internal key), so request.client.host is the proxy's own
-    address — identical for every user. The proxy forwards X-Forwarded-For
-    verbatim, and a conforming ingress APPENDS the address it actually saw the
-    client connect from to the RIGHT of whatever the client already sent. The
-    right-most entry is therefore the only one the caller cannot choose; the
-    left-most is attacker-supplied end to end and must never be trusted —
-    recording it would let a candidate write an arbitrary address (even an
-    uninvolved third party's) into the permanent KVKK consent record.
-    """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client = forwarded.rsplit(",", 1)[-1].strip()
-        if client:
-            return client
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip and real_ip.strip():
-        return real_ip.strip()
-    return request.client.host if request.client else None
-
-
-def _rate_limit_key(request: Request) -> str:
-    """
-    One rate-limit bucket per end user, not per socket peer.
-
-    get_remote_address keys on request.client.host, which is the proxy's
-    address for every browser request — the entire user base would share a
-    single 60/minute bucket per endpoint and a handful of concurrent users
-    could 429 everyone else, sign-in included. Key on the same forwarded
-    client address the consent log records instead.
-    """
-    return _client_ip(request) or get_remote_address(request)
-
-
-# Initialize Rate Limiter (60 requests/minute per end-user address by default)
-limiter = Limiter(key_func=_rate_limit_key, default_limits=["60/minute"])
+# The rate limiter and _client_ip now live in src/rate_limit.py so the auth
+# router can decorate its own endpoints without importing this module.
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -88,3 +88,25 @@ def test_spoofed_leftmost_forwarded_entry_does_not_mint_fresh_buckets(unauthenti
         )
     finally:
         limiter.reset()
+
+
+def test_login_is_throttled_below_the_default(keyed_client):
+    """
+    Login is the credential-guessing endpoint and carries its own 10/min cap,
+    far tighter than the 60/min default — online password spraying must run
+    out of attempts long before it can grind through a weak password.
+    """
+    limiter.reset()
+    try:
+        statuses = [
+            keyed_client.post(
+                "/api/v1/auth/login",
+                json={"email": "nobody@example.com", "password": "wrong-password-x"},
+                headers={"X-Forwarded-For": "203.0.113.44"},
+            ).status_code
+            for _ in range(15)
+        ]
+        assert statuses.count(401) <= 10, "at most 10 credential attempts should be evaluated"
+        assert 429 in statuses, "the 11th+ attempt in a minute must be rate limited"
+    finally:
+        limiter.reset()

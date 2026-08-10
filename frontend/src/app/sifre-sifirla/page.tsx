@@ -105,10 +105,10 @@ function ResetPasswordForm() {
             id="yeni-sifre"
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="En az 6 karakter"
+            placeholder="En az 8 karakter"
             className="field"
           />
         </div>
@@ -124,7 +124,7 @@ function ResetPasswordForm() {
             id="yeni-sifre-tekrar"
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={passwordAgain}
             onChange={(e) => setPasswordAgain(e.target.value)}
             placeholder="••••••••"

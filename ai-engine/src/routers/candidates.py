@@ -3,10 +3,11 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlmodel import Session, SQLModel, select
 
 from src.db.database import get_session
-from src.db.models import Candidate, Evidence
+from src.db.models import Candidate, Evidence, JobApplication, JobPosting
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer, require_user
 
@@ -51,24 +52,53 @@ class CandidateRead(SQLModel):
     created_at: datetime
 
 
-def _assert_may_read_candidate(candidate: Candidate, user: CurrentUser) -> None:
+def _employer_visible_candidate_ids(session: Session, employer_user_id) -> set[int]:
+    """
+    The candidates an employer is allowed to see: exactly those who applied
+    to one of this employer's postings. Ownerless postings
+    (created_by_user_id IS NULL — pre-ownership, transitional) stay visible to
+    every employer, matching the same rule the applications list already uses
+    (applications.py), so a name shown in the dashboard never 403s when its
+    report is opened.
+    """
+    rows = session.exec(
+        select(JobApplication.candidate_id)
+        .join(JobPosting, JobPosting.id == JobApplication.job_id)
+        .where(
+            or_(
+                JobPosting.created_by_user_id == employer_user_id,
+                JobPosting.created_by_user_id.is_(None),
+            )
+        )
+    ).all()
+    return {cid for cid in rows if cid is not None}
+
+
+def _assert_may_read_candidate(
+    candidate: Candidate, user: CurrentUser, session: Session
+) -> None:
     """
     Decides *who* may read a profile — not just which of its rows.
 
-    Registration mints predictable ids ("cand_<user id>") from a sequential
-    key, so an endpoint that only filters rows hands a stranger's name and
-    approved findings to anyone who can count. The roster is already
-    employer-only; the per-id views draw the same line: the candidate the
-    record is about, the employers who evaluate applicants, and the
-    moderating admins.
+    The product promises the candidate that their documents are shared "only
+    with the employer of the job you applied to" (KVKK page / landing FAQ).
+    So the trust boundary is not "any employer": an employer may read a
+    candidate only when that candidate applied to one of the employer's own
+    postings. Admins (moderation) see everyone; the candidate sees their own
+    record. Registration mints predictable ids ("cand_<user id>"), so without
+    this a stranger who registered as an employer could count their way
+    through the entire candidate pool — contradicting the promise.
     """
-    if user.get("role") in ("employer", "admin"):
+    if user.get("role") == "admin":
         return
     if candidate.user_id is not None and candidate.user_id == user.get("user_id"):
         return
+    if user.get("role") == "employer":
+        if candidate.id in _employer_visible_candidate_ids(session, user.get("user_id")):
+            return
     raise HTTPException(
         status_code=403,
-        detail="You may only view your own candidate profile.",
+        detail="Bu aday profilini görüntüleme yetkiniz yok.",
     )
 
 
@@ -77,8 +107,18 @@ def list_candidates(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_employer),
 ):
-    candidates = session.exec(select(Candidate)).all()
-    return candidates
+    """
+    The employer's candidate pool — only candidates who applied to this
+    employer's postings, never the whole database. Admins get everyone for
+    moderation.
+    """
+    if user.get("role") == "admin":
+        return session.exec(select(Candidate)).all()
+
+    visible = _employer_visible_candidate_ids(session, user.get("user_id"))
+    if not visible:
+        return []
+    return session.exec(select(Candidate).where(Candidate.id.in_(visible))).all()
 
 class CandidateCreate(SQLModel):
     """
@@ -141,7 +181,7 @@ def get_candidate(
     candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    _assert_may_read_candidate(candidate, user)
+    _assert_may_read_candidate(candidate, user, session)
     return candidate
 
 
@@ -154,7 +194,7 @@ def get_candidate_evidences(
     candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    _assert_may_read_candidate(candidate, user)
+    _assert_may_read_candidate(candidate, user, session)
 
     query = select(Evidence).where(Evidence.candidate_external_id == external_id)
     # Moderation gate: an upload awaiting (or refused by) human review must

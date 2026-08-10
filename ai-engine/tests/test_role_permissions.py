@@ -239,10 +239,12 @@ def test_candidate_roster_never_exposes_the_owning_account(client):
     key every ownership check is built on — and the KVKK `consent_timestamp`
     for every candidate on the platform in one call.
     """
-    from tests.conftest import create_candidate_profile
+    from tests.conftest import create_candidate_profile, link_candidate_to_employer
 
     ext_id = f"cand_roster_{uuid.uuid4().hex[:8]}"
     create_candidate_profile(ext_id, user_id=77779, name="Listedeki")
+    # The roster only carries this employer's own applicants now.
+    link_candidate_to_employer(ext_id, employer_user_id=900)
 
     resp = client.get("/api/v1/candidates/")
     assert resp.status_code == 200, resp.text
@@ -253,6 +255,44 @@ def test_candidate_roster_never_exposes_the_owning_account(client):
     for row in rows:
         assert "user_id" not in row
         assert "consent_timestamp" not in row
+
+
+def test_employer_cannot_read_a_candidate_who_did_not_apply(client):
+    """
+    The product promises documents are shared "only with the employer of the
+    job you applied to." So an employer with no application from a candidate
+    must not reach that candidate's profile, evidences, or roster row — even
+    though employer status is self-asserted at sign-up. Without this, anyone
+    could register as an employer and harvest the whole candidate pool by
+    counting through the sequential "cand_<n>" ids.
+    """
+    from tests.conftest import create_candidate_profile
+
+    ext_id = f"cand_stranger_{uuid.uuid4().hex[:8]}"
+    create_candidate_profile(ext_id, user_id=88888, name="İlgisiz Aday")
+
+    # No application to any of employer 900's postings → refused both views.
+    assert client.get(f"/api/v1/candidates/{ext_id}").status_code == 403
+    assert client.get(f"/api/v1/candidates/{ext_id}/evidences").status_code == 403
+
+    # …and absent from the roster.
+    roster = client.get("/api/v1/candidates/")
+    assert roster.status_code == 200
+    assert all(row["external_id"] != ext_id for row in roster.json()), (
+        "an employer's roster must not leak candidates who never applied to them"
+    )
+
+
+def test_employer_reads_a_candidate_once_they_apply(client):
+    """The flip side: once the candidate applies, the employer may read them."""
+    from tests.conftest import create_candidate_profile, link_candidate_to_employer
+
+    ext_id = f"cand_applicant_{uuid.uuid4().hex[:8]}"
+    create_candidate_profile(ext_id, user_id=88889, name="Başvuran Aday")
+    link_candidate_to_employer(ext_id, employer_user_id=900)
+
+    assert client.get(f"/api/v1/candidates/{ext_id}").status_code == 200
+    assert client.get(f"/api/v1/candidates/{ext_id}/evidences").status_code == 200
 
 
 def _job_id(client) -> int:

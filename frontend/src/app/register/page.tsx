@@ -174,7 +174,7 @@ export default function RegisterPage() {
             id="kayit-sifre"
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
@@ -182,7 +182,7 @@ export default function RegisterPage() {
             className="field"
           />
           <p id="sifre-kurali" className="mt-1.5 text-xs text-fg-mute">
-            En az 6 karakter olmalı.
+            En az 8 karakter olmalı.
           </p>
         </div>
 

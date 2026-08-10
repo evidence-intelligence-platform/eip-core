@@ -20,7 +20,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Setup (must happen before any app module is imported)
@@ -106,6 +106,32 @@ def create_candidate_profile(external_id: str, user_id: int, name: str = "Test A
         session.commit()
 
 
+def link_candidate_to_employer(candidate_external_id: str, employer_user_id: int = 900) -> None:
+    """
+    Wire the need-to-know relationship the roster and report access now
+    require: a posting owned by `employer_user_id`, and an application from
+    this candidate to it. Without an application, an employer has no business
+    seeing the candidate — which is exactly the access rule under test, so any
+    test where an employer legitimately views a candidate must establish the
+    link the same way production does (the candidate applied).
+    """
+    with Session(TEST_ENGINE) as session:
+        cand = session.exec(
+            select(models.Candidate).where(
+                models.Candidate.external_id == candidate_external_id
+            )
+        ).first()
+        job = models.JobPosting(
+            title="Erişim Testi İlanı",
+            description="need-to-know bağlantısı için ilan",
+            created_by_user_id=employer_user_id,
+        )
+        session.add(job)
+        session.flush()
+        session.add(models.JobApplication(candidate_id=cand.id, job_id=job.id))
+        session.commit()
+
+
 def get_test_session():
     """Test database session dependency — replaces production get_session."""
     with Session(TEST_ENGINE) as session:
@@ -119,6 +145,23 @@ app.dependency_overrides[get_session] = get_test_session
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """
+    Every TestClient request arrives from the same host, so all tests share
+    one rate-limit bucket per endpoint. The auth endpoints now cap at 5-10/min;
+    without a reset, the cumulative register/login/forgot calls across the
+    suite would trip 429 and fail unrelated tests. Clearing the counters
+    before each test isolates them — the dedicated rate-limit tests hammer a
+    single endpoint within one test, so they still reach their own limits.
+    """
+    from src.rate_limit import limiter
+
+    limiter.reset()
+    yield
+
 
 def _token_for(role: str, user_id: int, email: str) -> str:
     """Signs a JWT the same way /auth/login does."""

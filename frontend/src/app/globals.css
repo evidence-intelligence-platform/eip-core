@@ -68,6 +68,11 @@
   --animate-fade-in-up: fade-in-up 0.7s ease-out forwards;
   --animate-float: float 7s ease-in-out infinite;
   --animate-scanning: scanning 2.5s ease-in-out infinite;
+  --animate-drift: drift 14s ease-in-out infinite alternate;
+  --animate-drift-slow: drift 22s ease-in-out infinite alternate-reverse;
+  --animate-pulse-dot: pulse-dot 2.2s ease-in-out infinite;
+  --animate-marquee: marquee 42s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 48s linear infinite;
 }
 
 @keyframes fade-in-up {
@@ -106,6 +111,78 @@
     transform: translateY(100%);
     opacity: 0;
   }
+}
+
+/* Slow ambient movement for background glow layers. */
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(4%, -3%, 0) scale(1.08);
+  }
+}
+
+/* Live indicator dot — "YAYINDA" and friends. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 55%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Sector ticker rows. Content is duplicated once, so -50% loops cleanly. */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-reverse {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Report score ring — stroke sweep from empty to the measured value. The
+   final dashoffset arrives inline from the component. */
+@keyframes ring-sweep {
+  from {
+    stroke-dashoffset: var(--ring-circumference, 264);
+  }
+}
+
+/* A brass seal being pressed onto paper — lands once, settles with a
+   slight overshoot. Used on success screens. */
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.9) rotate(-14deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-8deg);
+  }
+  75% {
+    transform: scale(1.06) rotate(-10deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-10deg);
+  }
+}
+
+.animate-stamp {
+  animation: stamp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s backwards;
 }
 
 body {
@@ -251,6 +328,203 @@ body::after {
   font-weight: 600;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+/* ── Scroll reveal ─────────────────────────────────────────────────────
+   The <Reveal> component toggles .is-visible via IntersectionObserver.
+   Children can stagger with .reveal-stagger on the parent. */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-stagger.is-visible > * {
+  animation: fade-in-up 0.65s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.reveal-stagger.is-visible > *:nth-child(1) { animation-delay: 0.05s; }
+.reveal-stagger.is-visible > *:nth-child(2) { animation-delay: 0.15s; }
+.reveal-stagger.is-visible > *:nth-child(3) { animation-delay: 0.25s; }
+.reveal-stagger.is-visible > *:nth-child(4) { animation-delay: 0.35s; }
+.reveal-stagger.is-visible > *:nth-child(5) { animation-delay: 0.45s; }
+.reveal-stagger.is-visible > *:nth-child(6) { animation-delay: 0.55s; }
+
+/* While the parent is still off-screen the children must not flash. */
+.reveal-stagger:not(.is-visible) > * {
+  opacity: 0;
+}
+
+/* ── Elevated card variants ────────────────────────────────────────────
+   .card-lift    — raises with a brass-tinted shadow on hover
+   .card-glow    — adds a soft interior brand glow (hero panels, CTAs) */
+
+.card-lift {
+  transition: border-color 0.3s ease, background-color 0.3s ease,
+    transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-lift:hover {
+  border-color: color-mix(in oklab, var(--brand) 45%, var(--line));
+  background: var(--raised);
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px -18px color-mix(in oklab, var(--brand) 22%, #000),
+    0 6px 18px -8px rgb(0 0 0 / 0.5);
+}
+
+.card-glow {
+  position: relative;
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--brand) 7%, var(--surface)),
+    var(--surface) 55%
+  );
+}
+
+.card-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    60% 60% at 20% 0%,
+    color-mix(in oklab, var(--brand) 12%, transparent),
+    transparent 70%
+  );
+}
+
+/* Brass gradient hairline around a card (padding-box trick). */
+.border-gradient {
+  border: 1px solid transparent;
+  background-image: linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(
+      140deg,
+      color-mix(in oklab, var(--brand) 55%, var(--line)),
+      var(--line) 40%,
+      var(--line) 60%,
+      color-mix(in oklab, var(--brand) 35%, var(--line))
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+/* ── Button shine ──────────────────────────────────────────────────────
+   A light streak crosses .btn-shine on hover — one pass, no loop. */
+
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  transform: skewX(-20deg);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.35),
+    transparent
+  );
+  transition: left 0.55s ease;
+  z-index: 1;
+}
+
+.btn-shine:hover::after {
+  left: 120%;
+}
+
+/* ── Marquee ticker (sectors) ──────────────────────────────────────────── */
+
+.ticker-mask {
+  overflow: hidden;
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 8%,
+    #000 92%,
+    transparent
+  );
+}
+
+.ticker-row {
+  display: flex;
+  gap: 0.625rem;
+  width: max-content;
+}
+
+.ticker-row:hover {
+  animation-play-state: paused;
+}
+
+/* ── Skeleton shimmer ──────────────────────────────────────────────────
+   Loading placeholders that hold the layout instead of a spinner. */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--raised);
+  border-radius: var(--r-sm);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--fg) 6%, transparent),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ── Live dot ──────────────────────────────────────────────────────────── */
+
+.dot-live {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--ok);
+  animation: var(--animate-pulse-dot);
+}
+
+/* ── FAQ open/close: animate to natural height with the grid-rows trick. */
+
+.faq-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+details[open] .faq-body {
+  grid-template-rows: 1fr;
+}
+
+.faq-body > div {
+  overflow: hidden;
 }
 
 /* Keyboard users need to see where they are. Applies wherever a component

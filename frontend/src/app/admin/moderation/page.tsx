@@ -207,7 +207,7 @@ function EvidenceCard({
   const reviewedAt = formatDateTime(item.reviewed_at);
 
   return (
-    <article className="card card-hover p-6 space-y-4">
+    <article className="card card-lift p-6 space-y-4">
       {/* Card header: identifiers and badges */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap items-center gap-2">

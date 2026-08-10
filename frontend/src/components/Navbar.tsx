@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
 
@@ -12,23 +14,72 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "Yönetici",
 };
 
+/** Nav link with an animated brass underline on hover and on the active route. */
+function NavLink({
+  href,
+  children,
+  accent = false,
+}: {
+  href: string;
+  children: React.ReactNode;
+  accent?: boolean;
+}) {
+  const pathname = usePathname();
+  const active = pathname === href || pathname.startsWith(`${href}/`);
+
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`relative pb-0.5 font-medium rounded-sm transition-colors ${
+        accent
+          ? "text-brand hover:text-brand-strong"
+          : active
+          ? "text-fg"
+          : "text-fg-soft hover:text-fg"
+      }`}
+    >
+      {children}
+      <span
+        aria-hidden="true"
+        className={`absolute left-0 -bottom-0.5 h-px bg-brand transition-all duration-300 ${
+          active ? "w-full" : "w-0"
+        }`}
+      />
+    </Link>
+  );
+}
+
 export default function Navbar() {
   const { user, logout } = useAuth();
   const isEmployer = user?.role === "employer" || user?.role === "admin";
   const isCandidate = user?.role === "candidate";
   const isAdmin = user?.role === "admin";
 
-  const linkCls =
-    "text-fg-soft hover:text-fg transition-colors font-medium rounded-sm";
+  // A hairline of depth once the page moves — the bar reads as "floating"
+  // over content instead of being part of it.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-line bg-ground/90 backdrop-blur-md">
+    <nav
+      className={`sticky top-0 z-40 border-b bg-ground/90 backdrop-blur-md transition-shadow duration-300 ${
+        scrolled
+          ? "border-line-strong shadow-[0_10px_30px_-18px_rgba(0,0,0,0.8)]"
+          : "border-line"
+      }`}
+    >
       <div className="container mx-auto p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <Link
           href="/"
-          className="flex items-center gap-2.5 text-fg hover:text-brand-strong transition-colors"
+          className="flex items-center gap-2.5 text-fg hover:text-brand-strong transition-colors group"
         >
-          <SealMark className="w-7 h-7 shrink-0" />
+          <SealMark className="w-7 h-7 shrink-0 transition-transform duration-500 group-hover:rotate-[20deg]" />
           <span className="font-semibold tracking-tight text-lg leading-none">
             EİP
             <span className="hidden sm:inline text-fg-mute font-normal text-sm">
@@ -40,46 +91,31 @@ export default function Navbar() {
 
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
           {/* Always visible */}
-          <Link href="/jobs" className={linkCls}>
-            İş İlanları
-          </Link>
+          <NavLink href="/jobs">İş İlanları</NavLink>
 
           {/* Employer links */}
           {isEmployer && (
             <>
-              <Link
-                href="/employer/dashboard"
-                className="text-brand hover:text-brand-strong transition-colors font-medium rounded-sm"
-              >
+              <NavLink href="/employer/dashboard" accent>
                 İşveren Paneli
-              </Link>
-              <Link href="/candidates" className={linkCls}>
-                Aday Havuzu
-              </Link>
-              <Link href="/requirements" className={linkCls}>
-                Gereksinimler
-              </Link>
+              </NavLink>
+              <NavLink href="/candidates">Aday Havuzu</NavLink>
+              <NavLink href="/requirements">Gereksinimler</NavLink>
             </>
           )}
 
           {/* Admin links */}
           {isAdmin && (
-            <Link
-              href="/admin/moderation"
-              className="text-brand hover:text-brand-strong transition-colors font-medium rounded-sm"
-            >
+            <NavLink href="/admin/moderation" accent>
               Moderasyon
-            </Link>
+            </NavLink>
           )}
 
           {/* Candidate links */}
           {isCandidate && (
-            <Link
-              href="/candidate/hub"
-              className="text-brand hover:text-brand-strong transition-colors font-medium rounded-sm"
-            >
+            <NavLink href="/candidate/hub" accent>
               Aday Paneli
-            </Link>
+            </NavLink>
           )}
 
           {/* Auth section */}
@@ -120,7 +156,7 @@ export default function Navbar() {
               </Link>
               <Link
                 href="/register"
-                className="px-3.5 py-1.5 rounded-md bg-brand text-brand-ink text-xs font-semibold hover:bg-brand-strong transition-colors"
+                className="btn-shine px-3.5 py-1.5 rounded-md bg-brand text-brand-ink text-xs font-semibold hover:bg-brand-strong transition-colors"
               >
                 Hesap Oluştur
               </Link>

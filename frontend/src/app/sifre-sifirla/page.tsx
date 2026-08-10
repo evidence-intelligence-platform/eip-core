@@ -132,7 +132,7 @@ function ResetPasswordForm() {
           />
         </div>
 
-        <button type="submit" disabled={loading} className="btn btn-brand w-full">
+        <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
           {loading ? "Güncelleniyor…" : "Şifreyi Güncelle"}
         </button>
       </form>
@@ -147,7 +147,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="max-w-md mx-auto my-12 card p-8 space-y-6">
+    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
         <h1 className="text-2xl font-semibold text-fg tracking-tight">

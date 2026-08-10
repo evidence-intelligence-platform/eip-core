@@ -25,6 +25,47 @@ const REVIEW_NOTES: Record<string, { className: string; text: string }> = {
   },
 };
 
+/** Animated brass score ring — sweeps from empty to the measured value once. */
+function ScoreRing({ score }: { score: number }) {
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  const offset = C * (1 - Math.min(Math.max(score, 0), 100) / 100);
+  return (
+    <div className="relative w-36 h-36" role="img" aria-label={`Uyum oranı yüzde ${score}`}>
+      <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+        <circle
+          cx="60"
+          cy="60"
+          r={R}
+          fill="none"
+          stroke="var(--line)"
+          strokeWidth="8"
+        />
+        <circle
+          cx="60"
+          cy="60"
+          r={R}
+          fill="none"
+          stroke="var(--brand)"
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={offset}
+          style={{
+            ["--ring-circumference" as unknown as string]: `${C}`,
+            animation: "ring-sweep 1.2s cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-3xl font-semibold text-brand tabular-nums">
+          %{score}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportPage() {
   const params = useParams();
   const candidateId = params.id as string;
@@ -99,11 +140,9 @@ export default function ReportPage() {
         <>
           {/* Executive Match Score & Summary */}
           <div className="card grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
-            <div className="flex flex-col items-center justify-center p-4 border-b md:border-b-0 md:border-r border-line space-y-2">
+            <div className="flex flex-col items-center justify-center p-4 border-b md:border-b-0 md:border-r border-line space-y-3">
               <span className="text-xs font-semibold text-fg-mute uppercase tracking-wider text-center text-balance">Belgeyle Doğrulanmış Uyum Oranı</span>
-              <div className="text-5xl font-semibold text-brand tabular-nums">
-                %{report?.summary.score}
-              </div>
+              <ScoreRing score={report?.summary.score ?? 0} />
               <span className="text-xs text-fg-mute tabular-nums">
                 {report?.summary.verified} / {report?.summary.total} gereksinim belgeyle doğrulandı
               </span>
@@ -146,7 +185,13 @@ export default function ReportPage() {
                 {report?.evidences.map((e, index) => (
                   <div
                     key={e.id || index}
-                    className="card p-6 space-y-4"
+                    className={`card card-lift p-6 space-y-4 border-l-2 ${
+                      e.status === "VERIFIED"
+                        ? "border-l-ok/60"
+                        : e.status === "CONTRADICTION"
+                        ? "border-l-err/60"
+                        : "border-l-warn/60"
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
                       <div className="flex items-center gap-2">

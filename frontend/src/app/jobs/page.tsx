@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
-import { CATEGORIES, type CategoryKey } from "@/lib/categories";
+import { CATEGORIES, categoryIcon, categoryLabel, type CategoryKey } from "@/lib/categories";
 import {
   getJobs,
   getCandidate,
@@ -16,7 +16,7 @@ import {
   ProfessionCategory,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { IconHumanReview } from "@/components/illustrations";
+import { IconHumanReview, SealMark } from "@/components/illustrations";
 
 const AI_STATUS_LABELS: Record<string, string> = {
   VERIFIED: "Doğrulandı",
@@ -325,10 +325,10 @@ export default function JobListingsPage() {
                 key={cat.key}
                 onClick={() => setSelectedCategory(cat.key)}
                 aria-pressed={active}
-                className={`px-4 py-2 rounded-md text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-md text-xs font-semibold border transition-all duration-200 flex items-center gap-1.5 ${
                   active
-                    ? "bg-brand border-brand text-brand-ink"
-                    : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50"
+                    ? "bg-brand border-brand text-brand-ink scale-[1.04] shadow-lg shadow-brand/20"
+                    : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50 hover:-translate-y-0.5"
                 }`}
               >
                 <span aria-hidden="true">{cat.icon}</span> {cat.label}
@@ -352,11 +352,25 @@ export default function JobListingsPage() {
 
         {/* Job Cards */}
         {loading ? (
-          <div className="card p-12 text-center text-fg-soft text-sm">
-            İş ilanları yükleniyor…
+          /* Skeletons keep the page's shape while the roster loads — no
+             layout jump when the real cards land. */
+          <div className="grid grid-cols-1 gap-6" aria-label="İş ilanları yükleniyor" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="card p-8 space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-2.5 flex-1">
+                    <div className="skeleton h-7 w-2/5" />
+                    <div className="skeleton h-3.5 w-1/4" />
+                  </div>
+                  <div className="skeleton h-11 w-44 shrink-0 rounded-md" />
+                </div>
+                <div className="skeleton h-16 w-full rounded-md" />
+              </div>
+            ))}
           </div>
         ) : filteredJobs.length === 0 ? (
-          <div className="card p-12 text-center space-y-3">
+          <div className="card p-12 text-center space-y-4">
+            <IconHumanReview className="w-14 h-14 mx-auto opacity-60" aria-hidden="true" />
             <p className="text-fg-soft text-base">
               {error
                 ? "İlanlar şu anda görüntülenemiyor."
@@ -369,33 +383,44 @@ export default function JobListingsPage() {
             {filteredJobs.map((job) => (
               <div
                 key={job.id}
-                className="card card-hover p-8 space-y-5"
+                className="card card-lift p-8 space-y-5 relative overflow-hidden group"
               >
+                {/* Brass reading rail — appears as the card gains focus */}
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-brand/70 via-brand/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                />
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <h2 className="text-2xl font-semibold text-fg tracking-tight text-balance">{job.title}</h2>
                       <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
+                        <span className="dot-live !w-1.5 !h-1.5" aria-hidden="true" />
                         {JOB_STATUS_LABELS[job.status] ?? "Yayında"}
                       </span>
                     </div>
-                    <p className="text-xs text-fg-mute mt-1.5">
-                      {job.company_name || "EİP Partner Kurum"}
-                      <span aria-hidden="true"> · </span>
+                    <p className="text-xs text-fg-mute mt-1.5 flex flex-wrap items-center gap-x-2">
+                      <span>{job.company_name || "EİP Partner Kurum"}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        <span aria-hidden="true">{categoryIcon(job.category)} </span>
+                        {categoryLabel(job.category)}
+                      </span>
+                      <span aria-hidden="true">·</span>
                       <span className="tabular-nums">İlan No #{job.id}</span>
                     </p>
                   </div>
 
                   <button
                     onClick={() => handleOpenApplyModal(job)}
-                    className="btn btn-brand text-sm shrink-0"
+                    className="btn btn-brand btn-shine text-sm shrink-0"
                   >
                     Belgelerinle başvur
                     <span aria-hidden="true">&rarr;</span>
                   </button>
                 </div>
 
-                <div className="p-4 bg-well rounded-md border border-line text-sm text-fg-soft leading-relaxed">
+                <div className="p-4 bg-well rounded-md border border-line text-sm text-fg-soft leading-relaxed transition-colors group-hover:border-line-strong">
                   {job.description}
                 </div>
               </div>
@@ -417,7 +442,7 @@ export default function JobListingsPage() {
               aria-modal="true"
               aria-labelledby="basvuru-modal-baslik"
               tabIndex={-1}
-              className="card p-8 max-w-xl w-full space-y-6 m-auto relative overflow-hidden"
+              className="card border-gradient p-8 max-w-xl w-full space-y-6 m-auto relative overflow-hidden animate-fade-in-up"
             >
               {submitting && (
                 <div className="absolute inset-0 bg-well/85 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-5 overflow-hidden rounded-lg">
@@ -448,7 +473,12 @@ export default function JobListingsPage() {
 
               {submitSuccessData ? (
                 <div className="space-y-5 py-2">
-                  <div className="p-4 bg-ok/10 border border-ok/30 rounded-md space-y-2">
+                  <div className="relative p-4 pr-20 bg-ok/10 border border-ok/30 rounded-md space-y-2 overflow-hidden">
+                    {/* The seal lands: the application is now on record. */}
+                    <SealMark
+                      className="animate-stamp absolute right-4 top-1/2 -translate-y-1/2 w-14 h-14 opacity-80 pointer-events-none"
+                      aria-hidden="true"
+                    />
                     <p className="font-semibold text-base text-ok">
                       Başvurunuz alındı — <span className="tabular-nums">{submitSuccessData.extraSourcesCount}</span> kanıt kaynağı işlendi.{" "}
                       <span className="tabular-nums">(Başvuru No #{submitSuccessData.appId})</span>

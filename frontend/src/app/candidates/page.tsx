@@ -106,7 +106,7 @@ export default function CandidatesPage() {
           ) : (
             <div className="grid gap-4">
               {candidates.map((c) => (
-                <div key={c.external_id} className="card card-hover p-4 flex justify-between items-center gap-4">
+                <div key={c.external_id} className="card card-lift p-4 flex justify-between items-center gap-4">
                   <div>
                     <h3 className="font-medium text-lg text-fg tracking-tight">{c.name}</h3>
                     <p className="text-xs text-fg-mute font-mono">{c.external_id}</p>

@@ -106,7 +106,7 @@ export default function RequirementsPage() {
           ) : (
             <div className="grid gap-4">
               {requirements.map((r) => (
-                <div key={r.external_id} className="card card-hover p-4 space-y-1">
+                <div key={r.external_id} className="card card-lift p-4 space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-mono text-brand font-semibold">{r.external_id}</span>
                   </div>

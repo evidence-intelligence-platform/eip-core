@@ -3,8 +3,21 @@ import { SealMark } from "@/components/illustrations";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-line bg-well mt-auto">
-      <div className="container mx-auto px-4 py-12 space-y-10">
+    <footer className="relative border-t border-line bg-well mt-auto overflow-hidden">
+      {/* Brass hairline glow along the top edge */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, color-mix(in oklab, var(--brand) 55%, transparent) 50%, transparent)",
+        }}
+      />
+      <SealMark
+        className="absolute -right-16 -bottom-16 w-64 h-64 opacity-[0.04] pointer-events-none"
+        aria-hidden="true"
+      />
+      <div className="container mx-auto px-4 py-12 space-y-10 relative">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
           <div className="space-y-3">
             <div className="flex items-center gap-2.5 text-fg font-semibold">

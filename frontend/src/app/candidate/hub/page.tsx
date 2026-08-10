@@ -242,7 +242,16 @@ export default function CandidateEvidenceHub() {
   const rejectedCount = evidences.filter((e) => e.review_status === "rejected").length;
 
   return (
-    <div className="max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
+    <div className="relative max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
+      {/* Same quiet brand tint the landing and jobs pages open with */}
+      <div
+        className="absolute inset-x-0 top-0 h-[20rem] -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(60% 70% at 50% 0%, color-mix(in oklab, var(--brand) 6%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line pb-6">
         <div className="space-y-1">
@@ -262,7 +271,7 @@ export default function CandidateEvidenceHub() {
           >
             Profilimi Gör
           </Link>
-          <Link href="/jobs" className="btn btn-brand text-xs px-4 py-2.5">
+          <Link href="/jobs" className="btn btn-brand btn-shine text-xs px-4 py-2.5">
             İş İlanlarını İncele
           </Link>
         </div>
@@ -446,7 +455,7 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={publishingAcc}
-                className="btn btn-brand w-full text-xs"
+                className="btn btn-brand btn-shine w-full text-xs"
               >
                 {publishingAcc ? "Analiz ediliyor…" : "Deneyimi Ekle"}
               </button>
@@ -461,7 +470,7 @@ export default function CandidateEvidenceHub() {
               </h3>
               <div className="space-y-3">
                 {accomplishments.map((acc) => (
-                  <div key={acc.id} className="card card-hover p-5 space-y-2">
+                  <div key={acc.id} className="card card-lift p-5 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="font-semibold text-fg text-sm">{acc.title}</h4>
                       <span
@@ -660,7 +669,7 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={analyzing || !file}
-                className="btn btn-brand w-full text-xs"
+                className="btn btn-brand btn-shine w-full text-xs"
               >
                 {analyzing ? "Belge inceleniyor…" : "Belgemi Değerlendir"}
               </button>
@@ -693,7 +702,7 @@ export default function CandidateEvidenceHub() {
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                 {applications.map((app) => (
-                  <div key={app.id} className="card card-hover bg-well p-4 space-y-1.5">
+                  <div key={app.id} className="card card-lift bg-well p-4 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold text-fg">
                         {getJobTitle(app.job_id)}

@@ -129,7 +129,7 @@ export default function EmployerDashboard() {
             için aşağıdaki bağlantıyı kullanabilirsiniz.
           </p>
           <div className="pt-2 flex justify-center">
-            <Link href="/candidate/hub" className="btn btn-brand text-xs">
+            <Link href="/candidate/hub" className="btn btn-brand btn-shine text-xs">
               Aday Paneline Git
             </Link>
           </div>
@@ -139,7 +139,16 @@ export default function EmployerDashboard() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
+    <div className="relative max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
+      {/* Same quiet brand tint the landing and jobs pages open with */}
+      <div
+        className="absolute inset-x-0 top-0 h-[20rem] -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(60% 70% at 50% 0%, color-mix(in oklab, var(--brand) 6%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line pb-6">
         <div className="space-y-1">
@@ -302,7 +311,7 @@ export default function EmployerDashboard() {
               <button
                 type="submit"
                 disabled={submittingJob}
-                className="btn btn-brand w-full text-xs"
+                className="btn btn-brand btn-shine w-full text-xs"
               >
                 {submittingJob ? "İlan yayınlanıyor…" : "İlanı Yayınla"}
               </button>
@@ -336,7 +345,7 @@ export default function EmployerDashboard() {
             ) : (
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                 {applications.map((app) => (
-                  <div key={app.id} className="card card-hover bg-well p-5 space-y-4">
+                  <div key={app.id} className="card card-lift bg-well p-5 space-y-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold text-fg tabular-nums">
                         Başvuru #{app.id}

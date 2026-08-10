@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from src.db.database import get_session
-from src.db.models import Company, JobPosting, Requirement
+from src.db.models import Company, JobPosting, Requirement, UserAccount
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer
 
@@ -81,12 +81,20 @@ def create_job(
     """Creates a new job posting. Employers only."""
     company_id = job_in.company_id
 
-    # Ensure company exists if name given and company_id not explicitly provided
-    if not company_id and job_in.company_name:
-        company = session.exec(select(Company).where(Company.name == job_in.company_name)).first()
+    # Single company identity: the posting is published as the company the
+    # employer REGISTERED (with its tax number), never a free-text name typed
+    # at posting time. Otherwise "Acme A.Ş." could register and then post as
+    # "Başka Şirket", and the verifiable-entity promise would be a lie. The
+    # request body's company_name is ignored for employers with a profile.
+    account = session.get(UserAccount, user.get("user_id"))
+    registered_name = account.company_name if account and account.company_name else None
+    company_name = registered_name or job_in.company_name
+
+    if not company_id and company_name:
+        company = session.exec(select(Company).where(Company.name == company_name)).first()
         if not company:
             # No hardcoded "Technology": this platform serves every sector.
-            company = Company(name=job_in.company_name, industry=job_in.category or "OTHER")
+            company = Company(name=company_name, industry=job_in.category or "OTHER")
             session.add(company)
             session.commit()
             session.refresh(company)

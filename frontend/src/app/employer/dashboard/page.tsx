@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { LedgerCheck } from "@/components/illustrations";
+import { BuildingIcon } from "@/components/CategoryIcon";
 
 export default function EmployerDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -223,22 +224,23 @@ export default function EmployerDashboard() {
 
             <form onSubmit={handleCreateJob} className="space-y-4">
               <div>
-                <label
-                  htmlFor="ilan-sirket"
-                  className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5"
-                >
-                  Şirket / Kurum Adı
-                </label>
-                <input
-                  id="ilan-sirket"
-                  type="text"
-                  required
-                  disabled={submittingJob}
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Örn: Acme Sağlık A.Ş."
-                  className="field text-xs"
-                />
+                <span className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">
+                  Şirket / Kurum
+                </span>
+                {/* The posting is published under the REGISTERED company — a
+                    single, verifiable identity, not a name retyped each time. */}
+                <div className="flex items-center gap-2 field text-xs !bg-well/60 cursor-not-allowed">
+                  <BuildingIcon className="w-4 h-4 text-brand shrink-0" />
+                  <span className="text-fg font-medium truncate">
+                    {user?.company_name || companyName || "Kayıtlı şirket"}
+                  </span>
+                  <span className="ml-auto badge bg-ok/10 text-ok border-ok/25 !text-[10px] shrink-0">
+                    Vergi no ile kayıtlı
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-fg-mute">
+                  İlanlar kayıtlı şirketiniz adına yayınlanır.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

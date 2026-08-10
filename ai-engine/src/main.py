@@ -50,7 +50,6 @@ from src.security.permissions import CurrentUser, require_user
 from src.services.audit import record_consent
 from src.services.base_llm import BaseLLMService
 from src.services.file_policy import MAX_UPLOAD_BYTES, read_upload_limited, sniff_kind
-from src.services.llm_service import GeminiLLMService
 from src.services.pdf_service import extract_text_or_flag_scanned
 from src.services.storage import sanitize_filename, save_upload
 
@@ -194,8 +193,10 @@ app.include_router(moderation.router)
 # LLM Service Initialization
 # ─────────────────────────────────────────────────────────────────────────────
 def get_llm_service() -> BaseLLMService:
-    """Dependency injection for the LLM Service."""
-    return GeminiLLMService()
+    """Dependency injection for the LLM Service — provider chosen via env."""
+    from src.services.llm_factory import get_llm_service as _factory
+
+    return _factory()
 
 
 def _category_for_requirement(requirement_id: str, session: Session) -> str | None:

@@ -150,6 +150,10 @@ class JobApplication(SQLModel, table=True):
     job_id: int = Field(foreign_key="jobposting.id")
     status: str = Field(default="submitted", description="submitted, reviewing, accepted, declined")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Cached AI standout traits (JSON array of short skill phrases), computed
+    # once from the applicant's verified evidence and reused on every dashboard
+    # load. Null until first computed; "[]" means "computed, nothing to show".
+    standout_traits: str | None = Field(default=None)
 
 
 class Evidence(SQLModel, table=True):

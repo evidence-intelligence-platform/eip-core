@@ -158,3 +158,44 @@ class GeminiLLMService(BaseLLMService):
             )
 
         return ExtractionResult.model_validate_json(response.text)
+
+    def summarize_traits(self, reasoning_texts: list[str]) -> list[str]:
+        """
+        Turns a candidate's verified-evidence reasoning into 2-3 short Turkish
+        skill phrases — the standout traits a recruiter reads before the CV.
+
+        Synchronous on purpose: it is called from the (sync) applications list
+        and cached, so it runs at most once per applicant. Returns [] on any
+        problem (empty input, quota, safety filter, parse error) — the caller
+        then falls back to deterministic tags. Never raises.
+        """
+        joined = "\n".join(f"- {t}" for t in reasoning_texts if t and t.strip())
+        if not joined:
+            return []
+        prompt = (
+            "Aşağıda bir iş adayının DOĞRULANMIŞ kanıtlarına dair değerlendirme "
+            "gerekçeleri var. Bunlardan, işverenin bir bakışta göreceği en çok "
+            "2-3 kısa 'öne çıkan yetenek' etiketi çıkar. Her etiket en fazla 4 "
+            "kelime, Türkçe, somut bir yeteneği anlatsın (ör. 'Güçlü React deneyimi', "
+            "'MEB onaylı ustalık'). Yalnızca JSON dizi döndür: [\"...\", \"...\"].\n\n"
+            f"Gerekçeler:\n{joined}"
+        )
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.2,
+                },
+            )
+            import json
+
+            data = json.loads(response.text or "[]")
+            if not isinstance(data, list):
+                return []
+            traits = [str(x).strip() for x in data if str(x).strip()]
+            return traits[:3]
+        except Exception:
+            # Quota (429), safety filter, bad JSON, network — all non-fatal.
+            return []

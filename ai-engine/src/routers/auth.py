@@ -33,6 +33,7 @@ from src.security.jwt import create_access_token, get_current_user_payload, hash
 from src.services.audit import anonymize_identifier, record_audit
 from src.services.email_service import password_reset_email, send_email, welcome_email
 from src.services.storage import delete_upload
+from src.services.tax_id import is_valid_tax_number
 
 # How long a reset link stays valid. Mirrored in the e-mail copy ("30 dakika")
 # — change both together.
@@ -94,8 +95,10 @@ def _validate_employer_profile(data: "RegisterRequest") -> None:
     if not (data.company_name and data.company_name.strip()):
         raise HTTPException(status_code=400, detail="Şirket adı zorunludur.")
     tax = (data.tax_number or "").strip()
-    if not tax.isdigit() or not (10 <= len(tax) <= 11):
-        # Turkish VKN is 10 digits, TCKN (sole proprietor) is 11.
+    if not is_valid_tax_number(tax):
+        # Real checksum, not just a length check: rejects mistyped numbers and
+        # most random digit strings (a VKN/TCKN carries a check digit). Full
+        # existence at GİB still needs an online lookup — out of scope here.
         raise HTTPException(
             status_code=400,
             detail="Geçerli bir vergi numarası girin (10 haneli VKN veya 11 haneli TCKN).",
@@ -129,6 +132,10 @@ class UserProfileResponse(BaseModel):
     # The server owns this identity. The UI used to build it from the e-mail
     # address, which produced a different value than the one stored here.
     candidate_external_id: str | None = None
+    # Employer's registered company — the authoritative name postings publish
+    # under. The tax number itself is intentionally NOT returned to the client.
+    company_name: str | None = None
+    company_size: str | None = None
 
 
 @router.post(
@@ -277,6 +284,8 @@ def get_me(
         role=user.role,
         created_at=user.created_at.isoformat(),
         candidate_external_id=candidate.external_id if candidate else None,
+        company_name=user.company_name,
+        company_size=user.company_size,
     )
 
 

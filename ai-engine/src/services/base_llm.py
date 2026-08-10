@@ -49,3 +49,12 @@ class BaseLLMService(ABC):
         `reasoning` field. Violating this is a Constitution violation.
         """
         raise NotImplementedError
+
+    def summarize_traits(self, reasoning_texts: list[str]) -> list[str]:
+        """
+        Optional: turn verified-evidence reasoning into 2-3 short skill
+        phrases (the employer dashboard's standout tags). Providers that do
+        not implement it inherit this no-op, and the caller falls back to
+        deterministic tags — so the feature degrades gracefully, never breaks.
+        """
+        return []

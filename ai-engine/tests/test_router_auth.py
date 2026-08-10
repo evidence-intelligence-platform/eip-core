@@ -78,6 +78,25 @@ def test_employer_must_supply_company_name_and_tax_number(keyed_client):
     ).status_code == 400
 
 
+def test_employer_tax_number_checksum_is_enforced(keyed_client):
+    """A checksum-invalid tax number is rejected, a valid one accepted."""
+    bad = _reg(
+        keyed_client,
+        company_name="Acme A.Ş.",
+        tax_number="1234567891",  # last digit breaks the VKN checksum
+        company_size="1-5",
+    )
+    assert bad.status_code == 400, bad.text
+
+    good = _reg(
+        keyed_client,
+        company_name="Acme A.Ş.",
+        tax_number="1234567890",  # checksum-valid VKN
+        company_size="1-5",
+    )
+    assert good.status_code == 201, good.text
+
+
 def test_small_employer_needs_no_corporate_email(keyed_client):
     """A 1-5 person company is not asked for a corporate address."""
     resp = _reg(

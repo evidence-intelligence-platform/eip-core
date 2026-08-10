@@ -11,6 +11,9 @@ export interface UserAccount {
   created_at?: string;
   /** Server-owned identity. Never build this client-side. */
   candidate_external_id?: string | null;
+  /** Employer: the registered company name postings publish under. */
+  company_name?: string | null;
+  company_size?: string | null;
 }
 
 export interface Candidate {

@@ -55,7 +55,11 @@ def seed_database():
         emp_user = UserAccount(
             email="employer@acme.com",
             hashed_password=hash_password("employer123"),
-            role="employer"
+            role="employer",
+            company_name="Acme Corp",
+            tax_number="1234567890",  # checksum-valid VKN
+            company_size="21-50",
+            company_email="ik@acme.com",
         )
         session.add(emp_user)
 

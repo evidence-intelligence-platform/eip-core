@@ -5,6 +5,7 @@ import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import { useAuth } from "@/context/AuthContext";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
+import Tilt from "@/components/Tilt";
 import {
   DocumentSeal,
   MagnifierDoc,
@@ -260,8 +261,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* The one bold moment: the sealed certificate, now with a small
-              orbit of verification chips. */}
+          {/* The one bold moment: the sealed certificate — it leans toward
+              the cursor, chips floating in its orbit. */}
           <div className="relative hidden lg:block" aria-hidden="true">
             <div
               className="absolute inset-0 -z-10"
@@ -270,16 +271,18 @@ export default function Home() {
                   "radial-gradient(50% 50% at 50% 55%, color-mix(in oklab, var(--brand) 16%, transparent), transparent 75%)",
               }}
             />
-            <DocumentSeal className="w-full max-w-md mx-auto animate-float" />
-            {HERO_CHIPS.map((chip) => (
-              <span
-                key={chip.text}
-                className={`absolute ${chip.cls} badge ${chip.tone} shadow-lg backdrop-blur-sm animate-float`}
-                style={{ animationDelay: chip.delay }}
-              >
-                {chip.text}
-              </span>
-            ))}
+            <Tilt className="relative">
+              <DocumentSeal className="w-full max-w-md mx-auto animate-float" />
+              {HERO_CHIPS.map((chip) => (
+                <span
+                  key={chip.text}
+                  className={`absolute ${chip.cls} badge ${chip.tone} shadow-lg backdrop-blur-sm animate-float`}
+                  style={{ animationDelay: chip.delay }}
+                >
+                  {chip.text}
+                </span>
+              ))}
+            </Tilt>
           </div>
         </section>
 

@@ -38,7 +38,7 @@ the "Isolated Intelligence Zone" design in `eif-core-docs`.
   | `INTERNAL_API_KEY` | generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
   | `JWT_SECRET_KEY` | generate: `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
   | `GEMINI_API_KEY` | from https://aistudio.google.com/apikey |
-  | `LLM_MODEL_NAME` | `gemini-2.5-flash` (optional, default) |
+  | `LLM_MODEL_NAME` | `gemini-flash-latest` (optional, default) — pin a concrete model only if reproducibility matters |
   | `FRONTEND_URL` | the frontend's public URL (e.g. `https://<app>.up.railway.app`) — password reset links point here |
   | `RESEND_API_KEY` | optional — from https://resend.com; without it e-mails are logged, not sent |
   | `EMAIL_FROM` | optional — verified sender, e.g. `EIP <no-reply@yourdomain.com>` |

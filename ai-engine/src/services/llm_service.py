@@ -32,7 +32,7 @@ class GeminiLLMService(BaseLLMService):
 
     Loaded from environment:
       - GEMINI_API_KEY:  Required. Google AI API key.
-      - LLM_MODEL_NAME:  Optional. Defaults to "gemini-2.5-flash".
+      - LLM_MODEL_NAME:  Optional. Defaults to "gemini-flash-latest".
                          Override to test different models without code changes.
     """
 
@@ -46,8 +46,17 @@ class GeminiLLMService(BaseLLMService):
 
         # AUDIT FIX: Model name loaded from env — NOT hardcoded.
         # This prevents the Constitution violation of hardcoding a vendor-specific model.
-        self.model_name = os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash")
+        # Default is the rolling alias: Google closed "gemini-2.5-flash" to new
+        # accounts (404 NOT_FOUND), while the alias always resolves to the
+        # current flash model. Pin a concrete model via LLM_MODEL_NAME if
+        # reproducibility matters more than availability.
+        self.model_name = os.getenv("LLM_MODEL_NAME", "gemini-flash-latest")
 
+        # Both key generations work here: classic "AIza…" keys and the "AQ.…"
+        # Auth keys AI Studio issues since June 2026 (AIza keys die September
+        # 2026). Do NOT route "AQ." keys to vertexai=True — Vertex Express
+        # keys share that prefix, but AI Studio Auth keys sent to the Vertex
+        # entry point hit its billing wall instead of the free tier.
         self.client = genai.Client(api_key=self.api_key)
 
         self.system_prompt = """

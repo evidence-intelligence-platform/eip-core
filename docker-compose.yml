@@ -32,7 +32,8 @@ services:
     restart: always
     environment:
       DATABASE_URL: postgresql://eip_user:${POSTGRES_PASSWORD:?set it in .env}@postgres:5432/eip_db
-      LLM_MODEL_NAME: gemini-2.5-flash
+      # Rolling alias — Google closed gemini-2.5-flash to new accounts.
+      LLM_MODEL_NAME: gemini-flash-latest
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set it in .env}
       # NOTE: the engine reads JWT_SECRET_KEY (src/security/jwt.py) — the old

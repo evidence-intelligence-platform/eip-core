@@ -6,9 +6,13 @@ Owner: EIF Architecture Team
 Compliance: 06_API_CONTRACTS.md — User authentication & token issuance
 """
 
+import hashlib
+import os
+import secrets
+from datetime import datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
@@ -19,13 +23,34 @@ from src.db.models import (
     ExplainabilityReport,
     JobApplication,
     JobPosting,
+    PasswordResetToken,
     Requirement,
     UserAccount,
 )
 from src.security.auth import verify_api_key
 from src.security.jwt import create_access_token, get_current_user_payload, hash_password, verify_password
 from src.services.audit import anonymize_identifier, record_audit
+from src.services.email_service import password_reset_email, send_email, welcome_email
 from src.services.storage import delete_upload
+
+# How long a reset link stays valid. Mirrored in the e-mail copy ("30 dakika")
+# — change both together.
+RESET_TOKEN_TTL_MINUTES = 30
+
+# A second forgot-password request inside this window silently reuses silence:
+# no new token, no new e-mail. Keeps a stuck user from mailbombing themselves
+# (or an attacker from mailbombing someone else) within the rate limit.
+RESET_REQUEST_COOLDOWN_SECONDS = 60
+
+
+def _hash_reset_token(token: str) -> str:
+    """SHA-256 hex of the reset token — only this ever touches the database."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _frontend_base_url() -> str:
+    """Where reset links point. In production set FRONTEND_URL explicitly."""
+    return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -72,6 +97,7 @@ class UserProfileResponse(BaseModel):
 )
 def register_user(
     request: RegisterRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> AuthTokenResponse:
     """Registers a new UserAccount and auto-generates a Candidate profile if role is 'candidate'."""
@@ -123,6 +149,11 @@ def register_user(
 
     session.commit()
     session.refresh(user)
+
+    # Best-effort, after the response: registration must never fail or slow
+    # down because the mail provider is down (or not configured yet).
+    subject, html = welcome_email(request.full_name or request.email.split("@")[0])
+    background_tasks.add_task(send_email, user.email, subject, html)
 
     token = create_access_token({"sub": user.email, "user_id": user.id, "role": user.role})
     return AuthTokenResponse(
@@ -184,6 +215,147 @@ def get_me(
         created_at=user.created_at.isoformat(),
         candidate_external_id=candidate.external_id if candidate else None,
     )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr = Field(..., description="Account e-mail to send the reset link to")
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=16, description="Reset token from the e-mailed link")
+    # Same policy as registration: the reset path must not accept a password
+    # that /register would reject.
+    new_password: str = Field(..., min_length=6, description="New password (min 6 chars)")
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password reset link by e-mail",
+)
+def forgot_password(
+    request: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> MessageResponse:
+    """
+    Always answers 202 with the same message, whether or not the address has
+    an account — this endpoint must not double as an account-existence oracle.
+
+    When the account exists, a single-use token (30 min TTL) is stored as a
+    SHA-256 hash and the plaintext goes out by e-mail only. Repeated requests
+    inside the cooldown window are silently ignored.
+    """
+    generic = MessageResponse(
+        message="Bu adrese kayıtlı bir hesap varsa, şifre sıfırlama bağlantısı gönderildi."
+    )
+
+    user = session.exec(select(UserAccount).where(UserAccount.email == request.email)).first()
+    if not user:
+        return generic
+
+    now = datetime.utcnow()
+    recent = session.exec(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.user_id == user.id)
+        .where(PasswordResetToken.created_at > now - timedelta(seconds=RESET_REQUEST_COOLDOWN_SECONDS))
+    ).first()
+    if recent:
+        return generic
+
+    token = secrets.token_urlsafe(32)
+    session.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_reset_token(token),
+            expires_at=now + timedelta(minutes=RESET_TOKEN_TTL_MINUTES),
+        )
+    )
+    record_audit(
+        session,
+        actor_id=user.email,
+        action="auth.password_reset_requested",
+        target_entity=f"useraccount:{user.id}",
+    )
+    session.commit()
+
+    reset_link = f"{_frontend_base_url()}/sifre-sifirla?token={token}"
+    subject, html = password_reset_email(reset_link)
+    background_tasks.add_task(send_email, user.email, subject, html)
+
+    return generic
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    summary="Set a new password using an e-mailed reset token",
+)
+def reset_password(
+    request: ResetPasswordRequest,
+    session: Session = Depends(get_session),
+) -> MessageResponse:
+    """
+    Consumes a valid token and replaces the account password. The token row is
+    marked used and every other outstanding token of the same account dies
+    with it — a leaked older e-mail must not stay a working backdoor.
+    """
+    now = datetime.utcnow()
+    token_row = session.exec(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == _hash_reset_token(request.token)
+        )
+    ).first()
+
+    if not token_row or token_row.used_at is not None or token_row.expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş. "
+                "Lütfen yeni bir bağlantı isteyin."
+            ),
+        )
+
+    user = session.get(UserAccount, token_row.user_id)
+    if not user:
+        # The account was deleted after the link went out; the token points at
+        # nothing. Same message as above — no oracle here either.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş. "
+                "Lütfen yeni bir bağlantı isteyin."
+            ),
+        )
+
+    user.hashed_password = hash_password(request.new_password)
+    token_row.used_at = now
+    session.add(user)
+    session.add(token_row)
+
+    # Retire the account's other live tokens in the same transaction.
+    for other in session.exec(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.user_id == user.id)
+        .where(PasswordResetToken.used_at == None)  # noqa: E711 — SQL IS NULL
+    ).all():
+        other.used_at = now
+        session.add(other)
+
+    record_audit(
+        session,
+        actor_id=user.email,
+        action="auth.password_reset_completed",
+        target_entity=f"useraccount:{user.id}",
+    )
+    session.commit()
+
+    return MessageResponse(message="Şifreniz güncellendi. Yeni şifrenizle giriş yapabilirsiniz.")
 
 
 def _delete_applications(session: Session, applications: list[JobApplication]) -> None:

@@ -104,6 +104,15 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} className="btn btn-brand w-full">
           {loading ? "Giriş yapılıyor…" : "Giriş Yap"}
         </button>
+
+        <div className="text-right">
+          <Link
+            href="/sifremi-unuttum"
+            className="text-xs text-fg-mute hover:text-brand hover:underline transition-colors"
+          >
+            Şifremi unuttum
+          </Link>
+        </div>
       </form>
 
       {/* Why we ask, what we never do */}

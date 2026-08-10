@@ -34,6 +34,23 @@ class UserAccount(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PasswordResetToken(SQLModel, table=True):
+    """
+    Single-use, short-lived password reset token.
+
+    Only the SHA-256 of the token is stored: a database leak must not hand an
+    attacker ready-to-use reset links. The plaintext token exists once, inside
+    the e-mail sent to the account owner. `used_at` marks consumption — a
+    consumed or expired row never resets anything again.
+    """
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="useraccount.id", index=True)
+    token_hash: str = Field(index=True, unique=True, description="SHA-256 hex of the token")
+    expires_at: datetime
+    used_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Role(SQLModel, table=True):
     """Role definitions for access control."""
     id: int | None = Field(default=None, primary_key=True)

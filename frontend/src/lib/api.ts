@@ -237,6 +237,44 @@ export async function getMe(token: string) {
 }
 
 /**
+ * Requests a password reset e-mail. The backend answers 202 with the same
+ * generic message whether or not the address has an account, so this function
+ * "succeeding" tells the caller nothing about account existence — by design.
+ */
+export async function requestPasswordReset(email: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: "POST",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw await toApiError(res, "İstek gönderilemedi. Lütfen tekrar deneyin.");
+  return res.json();
+}
+
+/** Consumes an e-mailed reset token and sets the new password. */
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_URL}/auth/reset-password`, {
+    method: "POST",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (res.status === 400) {
+    // The engine's 400 detail here is already a specific Turkish sentence
+    // ("bağlantı geçersiz veya süresi dolmuş…"); the generic BY_STATUS text
+    // would hide the one thing the user needs to know.
+    const body = await res.json().catch(() => null);
+    const detail = body && typeof body.detail === "string" ? body.detail : null;
+    throw new ApiError(
+      detail ?? "Şifre güncellenemedi. Bağlantı geçersiz veya süresi dolmuş olabilir.",
+      400
+    );
+  }
+  if (!res.ok)
+    throw await toApiError(res, "Şifre güncellenemedi. Bağlantı geçersiz veya süresi dolmuş olabilir.");
+  return res.json();
+}
+
+/**
  * Permanently deletes the signed-in user's account and owned data.
  * The engine answers 204 with no body, so there is nothing to parse —
  * callers clear local auth state themselves after this resolves.

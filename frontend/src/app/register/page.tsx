@@ -9,7 +9,10 @@ import { SealMark } from "@/components/illustrations";
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"employer" | "candidate">("employer");
+  // Most visitors are job seekers, and the engine's own default is
+  // "candidate" — the form should greet the majority with the right side
+  // already chosen.
+  const [role, setRole] = useState<"employer" | "candidate">("candidate");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,13 +41,6 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
-
-  const roleBtn = (active: boolean) =>
-    `py-2.5 rounded-md text-xs font-semibold border transition-colors ${
-      active
-        ? "bg-brand text-brand-ink border-brand"
-        : "bg-well border-line text-fg-soft hover:text-fg hover:border-line-strong"
-    }`;
 
   return (
     <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
@@ -84,22 +80,50 @@ export default function RegisterPage() {
             aria-labelledby="hesap-turu-etiket"
             className="grid grid-cols-2 gap-3"
           >
-            <button
-              type="button"
-              aria-pressed={role === "employer"}
-              onClick={() => setRole("employer")}
-              className={roleBtn(role === "employer")}
-            >
-              İşveren / İlan Veren
-            </button>
-            <button
-              type="button"
-              aria-pressed={role === "candidate"}
-              onClick={() => setRole("candidate")}
-              className={roleBtn(role === "candidate")}
-            >
-              İş Arıyorum
-            </button>
+            {(
+              [
+                {
+                  value: "candidate",
+                  icon: "🧑‍🔧",
+                  title: "İş Arıyorum",
+                  hint: "Belgemle başvuracağım",
+                },
+                {
+                  value: "employer",
+                  icon: "🏢",
+                  title: "İşveren / İlan Veren",
+                  hint: "Kanıta bakarak seçeceğim",
+                },
+              ] as const
+            ).map((opt) => {
+              const active = role === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setRole(opt.value)}
+                  className={`rounded-md border p-3.5 text-left space-y-1 transition-all duration-200 ${
+                    active
+                      ? "bg-brand/10 border-brand text-fg shadow-lg shadow-brand/10 scale-[1.02]"
+                      : "bg-well border-line text-fg-soft hover:text-fg hover:border-line-strong"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <span aria-hidden="true">{opt.icon}</span>
+                    {opt.title}
+                    {active && (
+                      <span className="ml-auto text-brand" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
+                  </span>
+                  <span className="block text-[11px] leading-snug text-fg-mute">
+                    {opt.hint}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

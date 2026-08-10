@@ -14,10 +14,51 @@ from pydantic import BaseModel
 from sqlmodel import Session, or_, select
 
 from src.db.database import get_session
-from src.db.models import Candidate, JobApplication, JobPosting
+from src.db.models import Candidate, Evidence, JobApplication, JobPosting
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer, require_user
 from src.services.audit import record_audit
+
+# What each verified source proves, in the employer's language. Shown as
+# short parenthetical tags next to an applicant's name so a recruiter can
+# read the standout signal at a glance — often before opening the CV.
+_SOURCE_TRAIT_LABELS: dict[str, str] = {
+    "PDF_RESUME": "Özgeçmiş doğrulandı",
+    "CERTIFICATE_LICENSE": "Sertifika/belge doğrulandı",
+    "LINKEDIN_URL": "Profil doğrulandı",
+    "PORTFOLIO_LINK": "Portföy doğrulandı",
+    "CHATGPT_EXPORT": "Çalışma geçmişi doğrulandı",
+}
+
+
+def _standout_traits_for(session: Session, external_ids: list[str]) -> dict[str, list[str]]:
+    """
+    The 2-3 strongest verified signals per candidate, derived from their
+    APPROVED + VERIFIED evidence (never pending/rejected — that is the
+    moderation promise). Deterministic and quota-free: it reads what the AI
+    already decided during extraction rather than making a fresh model call
+    on every dashboard load. Ordered by confidence, deduplicated by label.
+    """
+    if not external_ids:
+        return {}
+    rows = session.exec(
+        select(Evidence)
+        .where(Evidence.candidate_external_id.in_(external_ids))
+        .where(Evidence.status == "VERIFIED")
+        .where(or_(Evidence.review_status == "approved", Evidence.review_status.is_(None)))
+    ).all()
+    # Highest confidence first, so the strongest signal leads the tag list.
+    rows.sort(key=lambda e: (e.confidence_score or 0), reverse=True)
+
+    traits: dict[str, list[str]] = {}
+    for ev in rows:
+        label = _SOURCE_TRAIT_LABELS.get(ev.source_type)
+        if not label:
+            continue
+        bucket = traits.setdefault(ev.candidate_external_id, [])
+        if label not in bucket and len(bucket) < 3:
+            bucket.append(label)
+    return traits
 
 router = APIRouter(
     prefix="/api/v1/applications",
@@ -43,6 +84,10 @@ class JobApplicationRead(BaseModel):
     created_at: datetime
     candidate_external_id: str | None = None
     candidate_name: str | None = None
+    # AI-derived standout signals (verified evidence, moderation-approved),
+    # e.g. ["Sertifika/belge doğrulandı", "Özgeçmiş doğrulandı"]. Empty until
+    # the applicant's documents are processed. Employers/admins only.
+    standout_traits: list[str] = []
     # Whether *this caller* may decide the application, mirroring the PATCH
     # guard below. Employers are shown ownerless (created_by_user_id IS NULL)
     # postings' applications but the PATCH always 403s them; without this flag
@@ -96,6 +141,15 @@ def list_applications(
         )
 
     rows = session.exec(query).all()
+
+    # Standout traits are an employer/admin decision aid; a candidate viewing
+    # their own applications does not need them, and computing them there would
+    # only leak effort. Batch one query for every applicant on screen.
+    traits_by_ext: dict[str, list[str]] = {}
+    if role != "candidate":
+        ext_ids = [cand.external_id for _app, cand, _job in rows if cand and cand.external_id]
+        traits_by_ext = _standout_traits_for(session, ext_ids)
+
     return [
         JobApplicationRead(
             id=app.id,
@@ -105,6 +159,7 @@ def list_applications(
             created_at=app.created_at,
             candidate_external_id=cand.external_id if cand else None,
             candidate_name=cand.name if cand else None,
+            standout_traits=(traits_by_ext.get(cand.external_id, []) if cand else []),
             # Mirror of update_application_status's guard: admins decide
             # anything; employers only postings they created — an ownerless
             # posting (created_by_user_id IS NULL) is visible but never

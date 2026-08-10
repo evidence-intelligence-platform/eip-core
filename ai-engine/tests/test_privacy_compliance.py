@@ -45,10 +45,15 @@ def _register(keyed_client, role: str) -> tuple[str, str, str]:
     """Registers a fresh user via the public endpoint; returns (email, password, token)."""
     email = f"{role}_{uuid.uuid4().hex[:8]}@kvkk.eip.dev"
     password = "cok-gizli-parola-123"
-    resp = keyed_client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": password, "role": role, "full_name": "KVKK Testi"},
-    )
+    body = {"email": email, "password": password, "role": role, "full_name": "KVKK Testi"}
+    if role == "employer":
+        # Employers now must attach a company profile at sign-up.
+        body |= {
+            "company_name": "KVKK Test Şirketi",
+            "tax_number": "1234567890",
+            "company_size": "1-5",
+        }
+    resp = keyed_client.post("/api/v1/auth/register", json=body)
     assert resp.status_code == 201, resp.text
     return email, password, resp.json()["access_token"]
 

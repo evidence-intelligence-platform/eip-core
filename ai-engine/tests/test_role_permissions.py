@@ -386,6 +386,7 @@ def test_employer_cannot_decide_another_employers_application(keyed_client, clie
         "email": f"owner-{uuid.uuid4().hex[:8]}@example.com",
         "password": "secret123",
         "role": "employer",
+        **_EMPLOYER_COMPANY,
     })
     assert reg.status_code == 201, reg.text
     owner_headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
@@ -422,6 +423,16 @@ def test_employer_cannot_decide_another_employers_application(keyed_client, clie
     assert resp.status_code == 200, resp.text
 
 
+# A valid company profile for employer sign-ups. Size "1-5" keeps the
+# corporate-e-mail requirement off, so tests that don't care about that path
+# stay minimal.
+_EMPLOYER_COMPANY = {
+    "company_name": "Test Şirketi A.Ş.",
+    "tax_number": "1234567890",
+    "company_size": "1-5",
+}
+
+
 def _register_employer(keyed_client) -> tuple[str, dict]:
     """Registers a fresh employer; returns (email, auth headers)."""
     email = f"emp-{uuid.uuid4().hex[:8]}@example.com"
@@ -429,6 +440,7 @@ def _register_employer(keyed_client) -> tuple[str, dict]:
         "email": email,
         "password": "secret123",
         "role": "employer",
+        **_EMPLOYER_COMPANY,
     })
     assert reg.status_code == 201, reg.text
     return email, {"Authorization": f"Bearer {reg.json()['access_token']}"}

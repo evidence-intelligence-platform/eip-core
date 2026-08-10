@@ -85,6 +85,13 @@ export interface JobApplication {
   candidate_external_id?: string | null;
   candidate_name?: string | null;
   /**
+   * AI-derived standout signals from the applicant's verified, moderation-
+   * approved evidence — e.g. ["Sertifika/belge doğrulandı", "Özgeçmiş
+   * doğrulandı"]. Shown as parenthetical tags so a recruiter reads the
+   * highlight before opening the full report.
+   */
+  standout_traits?: string[];
+  /**
    * Whether the signed-in caller may decide (accept/decline) this
    * application. Mirrors the backend PATCH guard: employers also see
    * applications into ownerless (pre-ownership) postings, but deciding those
@@ -217,11 +224,32 @@ export async function loginUser(email: string, password: string) {
   return res.json();
 }
 
-export async function registerUser(email: string, password: string, role: string, fullName?: string) {
+/** Employer-only company profile collected at registration. */
+export interface CompanyProfile {
+  company_name?: string;
+  tax_number?: string;
+  company_size?: string;
+  company_email?: string;
+}
+
+export async function registerUser(
+  email: string,
+  password: string,
+  role: string,
+  fullName?: string,
+  company?: CompanyProfile
+) {
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ email, password, role, full_name: fullName }),
+    body: JSON.stringify({
+      email,
+      password,
+      role,
+      full_name: fullName,
+      // Only sent for employers; the backend ignores them for candidates.
+      ...(role === "employer" ? company : {}),
+    }),
   });
   if (!res.ok) throw await toApiError(res, "Kayıt tamamlanamadı.");
   return res.json();

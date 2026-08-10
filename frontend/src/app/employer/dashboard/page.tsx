@@ -362,21 +362,41 @@ export default function EmployerDashboard() {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center gap-3 text-xs">
-                      {/* The name and identity now come from the API; building
-                          "cand_{id}" here pointed at a record that never existed. */}
-                      <span className="text-fg-soft font-medium truncate">
-                        {app.candidate_name || `Aday #${app.candidate_id}`}
-                      </span>
-                      {app.candidate_external_id ? (
-                        <Link
-                          href={`/reports/${app.candidate_external_id}`}
-                          className="text-brand hover:text-brand-strong hover:underline font-semibold shrink-0 transition-colors"
-                        >
-                          Raporu incele &rarr;
-                        </Link>
-                      ) : (
-                        <span className="text-fg-mute shrink-0">Rapor hazır değil</span>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center gap-3 text-xs">
+                        {/* The name and identity now come from the API; building
+                            "cand_{id}" here pointed at a record that never existed. */}
+                        <span className="text-fg-soft font-medium truncate">
+                          {app.candidate_name || `Aday #${app.candidate_id}`}
+                        </span>
+                        {app.candidate_external_id ? (
+                          <Link
+                            href={`/reports/${app.candidate_external_id}`}
+                            className="text-brand hover:text-brand-strong hover:underline font-semibold shrink-0 transition-colors"
+                          >
+                            Raporu incele &rarr;
+                          </Link>
+                        ) : (
+                          <span className="text-fg-mute shrink-0">Rapor hazır değil</span>
+                        )}
+                      </div>
+
+                      {/* AI standout signals — the recruiter reads the highlight
+                          before opening the full report. */}
+                      {app.standout_traits && app.standout_traits.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] uppercase tracking-wider text-brand/80 font-semibold">
+                            Öne çıkan
+                          </span>
+                          {app.standout_traits.map((t) => (
+                            <span
+                              key={t}
+                              className="badge bg-ok/10 text-ok border-ok/25 !text-[10px] !py-0.5"
+                            >
+                              ✓ {t}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
 

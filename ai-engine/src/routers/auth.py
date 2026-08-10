@@ -59,13 +59,54 @@ router = APIRouter(
 )
 
 
+# Headcount bands offered to employers. ">5 people" (anything past "1-5")
+# triggers the corporate-e-mail requirement.
+COMPANY_SIZE_BANDS = ("1-5", "6-20", "21-50", "50+")
+
+
 class RegisterRequest(BaseModel):
-    email: EmailStr = Field(..., description="User email address")
+    # Personal e-mail for everyone — never a company address.
+    email: EmailStr = Field(..., description="Personal e-mail address")
     password: str = Field(..., min_length=8, description="Password (min 8 chars)")
     # "admin" is deliberately not selectable: the endpoint is public, so
     # anyone could have granted themselves administrator rights.
     role: Literal["employer", "candidate"] = Field("candidate", description="User role")
-    full_name: str | None = Field(None, description="Candidate or Employer name")
+    full_name: str | None = Field(None, description="Candidate or contact person name")
+
+    # ── Employer-only company profile ───────────────────────────────────────
+    company_name: str | None = Field(None, description="Employer: company name")
+    tax_number: str | None = Field(None, description="Employer: tax number (required for companies)")
+    company_size: str | None = Field(None, description="Employer: headcount band")
+    company_email: EmailStr | None = Field(
+        None, description="Employer: corporate e-mail (required when size > 5)"
+    )
+
+
+def _validate_employer_profile(data: "RegisterRequest") -> None:
+    """
+    A company account must be attributable to a real legal entity. Every
+    employer gives a company name and a tax number; only teams larger than
+    five are asked for a corporate e-mail, since a two-person workshop rarely
+    has one and requiring it would just push them to fake it.
+    """
+    if data.role != "employer":
+        return
+    if not (data.company_name and data.company_name.strip()):
+        raise HTTPException(status_code=400, detail="Şirket adı zorunludur.")
+    tax = (data.tax_number or "").strip()
+    if not tax.isdigit() or not (10 <= len(tax) <= 11):
+        # Turkish VKN is 10 digits, TCKN (sole proprietor) is 11.
+        raise HTTPException(
+            status_code=400,
+            detail="Geçerli bir vergi numarası girin (10 haneli VKN veya 11 haneli TCKN).",
+        )
+    if data.company_size not in COMPANY_SIZE_BANDS:
+        raise HTTPException(status_code=400, detail="Çalışan sayısı aralığını seçin.")
+    if data.company_size != "1-5" and not (data.company_email and str(data.company_email).strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="5'ten fazla çalışanı olan şirketler için kurumsal e-posta zorunludur.",
+        )
 
 
 class LoginRequest(BaseModel):
@@ -107,6 +148,7 @@ def register_user(
     session: Session = Depends(get_session),
 ) -> AuthTokenResponse:
     """Registers a new UserAccount and auto-generates a Candidate profile if role is 'candidate'."""
+    _validate_employer_profile(data)
     existing = session.exec(select(UserAccount).where(UserAccount.email == data.email)).first()
     if existing:
         # This does reveal that the address is taken — but the person is
@@ -123,6 +165,12 @@ def register_user(
         email=data.email,
         hashed_password=hashed_pw,
         role=data.role,
+        # Company profile is only meaningful for employers; candidates leave
+        # these null. Validation above already guaranteed the required ones.
+        company_name=(data.company_name.strip() if data.role == "employer" and data.company_name else None),
+        tax_number=(data.tax_number.strip() if data.role == "employer" and data.tax_number else None),
+        company_size=(data.company_size if data.role == "employer" else None),
+        company_email=(str(data.company_email) if data.role == "employer" and data.company_email else None),
     )
     session.add(user)
     # flush, not commit: user.id is needed to mint the candidate identity

@@ -28,10 +28,11 @@ export default function AppleIcon() {
             strokeWidth="2.2"
             strokeLinejoin="round"
           />
+          <circle cx="22" cy="22" r="12.5" stroke="#e3a84e" strokeWidth="1" opacity="0.55" />
           <path
-            d="M15.5 22.5l4.5 4.5 8.5-9.5"
+            d="M15.5 22.6l4.6 4.6L29 16.8"
             stroke="#efc078"
-            strokeWidth="2.6"
+            strokeWidth="2.7"
             strokeLinecap="round"
             strokeLinejoin="round"
           />

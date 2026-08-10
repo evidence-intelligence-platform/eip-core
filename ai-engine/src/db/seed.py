@@ -181,18 +181,31 @@ def seed_database():
         session.commit()
 
         print("[SEED] Seeding AI Evidence Extractions...")
+        # source_type values match what the live app sends (jobs page): a
+        # verified PORTFOLIO/PDF/CERTIFICATE surfaces as a standout tag on the
+        # employer dashboard.
         e1 = Evidence(
             candidate_external_id=alice.external_id,
             requirement_external_id=req1.external_id,
-            source_type="GITHUB",
+            source_type="PORTFOLIO_LINK",
             status="VERIFIED",
+            confidence_score=92,
             reasoning="Alice has implemented global state using React Context across multiple production repositories. Directly verified in repository alice/ecommerce-app.",
             evidence_pointer="github.com/alice/ecommerce-app/commit/9f8d7a#diff-auth-context",
+        )
+        e1b = Evidence(
+            candidate_external_id=alice.external_id,
+            requirement_external_id=req1.external_id,
+            source_type="PDF_RESUME",
+            status="VERIFIED",
+            confidence_score=88,
+            reasoning="Özgeçmiş, 6 yıl kesintisiz frontend deneyimini ve son işyerini referans bağlantısıyla doğruluyor.",
+            evidence_pointer="pdf://alice-cv.pdf#page=1",
         )
         e2 = Evidence(
             candidate_external_id=alice.external_id,
             requirement_external_id=req3.external_id,
-            source_type="CHATGPT",
+            source_type="CHATGPT_EXPORT",
             status="INSUFFICIENT EVIDENCE",
             reasoning="No GitHub Actions or CI/CD workflow files (.github/workflows) were detected in the candidate's provided code payloads.",
             evidence_pointer=None,
@@ -202,10 +215,12 @@ def seed_database():
             requirement_external_id=req2.external_id,
             source_type="PDF_RESUME",
             status="VERIFIED",
+            confidence_score=90,
             reasoning="Candidate resume explicitly details building 5+ FastAPI async microservices serving 10M daily requests at previous employer.",
             evidence_pointer="pdf://resume.pdf#page=1&section=experience",
         )
         session.add(e1)
+        session.add(e1b)
         session.add(e2)
         session.add(e3)
         session.commit()

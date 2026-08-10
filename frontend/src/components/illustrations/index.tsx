@@ -24,7 +24,9 @@ const FILL = "var(--line-strong)";
 /* ── Logo mark: scalloped seal rosette with a check ─────────────────── */
 
 export function SealMark({ className }: IllustrationProps) {
-  // 12-lobed rosette approximated with a smooth star path.
+  // EİP verification seal — a scalloped wax-seal medallion (12 lobes) with a
+  // filled brass core, a fine inner ring, and a decisive check that doubles
+  // as a rising tick: evidence, sealed and verified. One mark, one meaning.
   return (
     <svg
       viewBox="0 0 44 44"
@@ -33,18 +35,22 @@ export function SealMark({ className }: IllustrationProps) {
       className={className}
       aria-hidden="true"
     >
+      {/* Scalloped outer seal */}
       <path
         d="M22 3l3.2 3 4.3-1 1.8 4 4.4.8-.3 4.4 3.6 2.6-2.3 3.8 2.3 3.8-3.6 2.6.3 4.4-4.4.8-1.8 4-4.3-1-3.2 3-3.2-3-4.3 1-1.8-4-4.4-.8.3-4.4L4.7 24 7 20.2 4.7 16.4l3.6-2.6-.3-4.4 4.4-.8 1.8-4 4.3 1 3.2-3z"
         fill={BRAND}
-        fillOpacity="0.14"
+        fillOpacity="0.16"
         stroke={BRAND}
         strokeWidth="2"
         strokeLinejoin="round"
       />
+      {/* Fine inner ring — the embossed rim of a real seal */}
+      <circle cx="22" cy="22" r="12.5" stroke={BRAND} strokeWidth="1.1" opacity="0.55" />
+      {/* Decisive check / rising tick */}
       <path
-        d="M15.5 22.5l4.5 4.5 8.5-9.5"
+        d="M15.5 22.6l4.6 4.6L29 16.8"
         stroke={BRAND}
-        strokeWidth="2.5"
+        strokeWidth="2.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

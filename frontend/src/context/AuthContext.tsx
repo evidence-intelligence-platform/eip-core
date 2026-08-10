@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { loginUser, registerUser, getMe, setAuthToken, UserAccount } from "@/lib/api";
+import { loginUser, registerUser, getMe, setAuthToken, UserAccount, type CompanyProfile } from "@/lib/api";
 
 interface AuthContextType {
   user: UserAccount | null;
@@ -11,7 +11,7 @@ interface AuthContextType {
   // to the right home, and reading useAuth().user right after awaiting would
   // still see the stale value from this render's closure.
   login: (email: string, password: string) => Promise<UserAccount>;
-  register: (email: string, password: string, role: string, fullName?: string) => Promise<UserAccount>;
+  register: (email: string, password: string, role: string, fullName?: string, company?: CompanyProfile) => Promise<UserAccount>;
   logout: () => void;
 }
 
@@ -58,8 +58,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return profile;
   };
 
-  const register = async (email: string, password: string, role: string, fullName?: string) => {
-    const data = await registerUser(email, password, role, fullName);
+  const register = async (email: string, password: string, role: string, fullName?: string, company?: CompanyProfile) => {
+    const data = await registerUser(email, password, role, fullName, company);
     setToken(data.access_token);
     setAuthToken(data.access_token);
     localStorage.setItem("eip_token", data.access_token);

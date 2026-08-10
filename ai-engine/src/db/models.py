@@ -28,10 +28,30 @@ from sqlmodel import Field, SQLModel
 class UserAccount(SQLModel, table=True):
     """User account model for Core Zone authentication and authorization."""
     id: int | None = Field(default=None, primary_key=True)
+    # Everyone signs up with a personal e-mail — a company address is never
+    # required to hold an account. Employers optionally add a corporate e-mail
+    # (see company_email) once their team is large enough to have one.
     email: str = Field(index=True, unique=True)
     hashed_password: str
     role: str = Field(default="candidate", description="employer, candidate, admin")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # ── Employer-only company profile (all nullable; a candidate leaves them
+    #    empty). Collected at registration so a posting can be attributed to a
+    #    verifiable legal entity from the first day. ──────────────────────────
+    company_name: str | None = Field(default=None, description="Employer: legal/company name")
+    tax_number: str | None = Field(
+        default=None,
+        description="Employer: Turkish tax number (VKN/TCKN) — required for every company",
+    )
+    company_size: str | None = Field(
+        default=None,
+        description="Employer: headcount band, e.g. '1-5', '6-20', '21-50', '50+'",
+    )
+    company_email: str | None = Field(
+        default=None,
+        description="Employer: corporate e-mail, requested only when the team exceeds 5 people",
+    )
 
 
 class PasswordResetToken(SQLModel, table=True):

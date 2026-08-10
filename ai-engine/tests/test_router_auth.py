@@ -8,6 +8,8 @@ were protected while candidates/requirements/jobs/applications
 were fully open.
 """
 
+import uuid
+
 import pytest
 
 PROTECTED_ENDPOINTS = [
@@ -43,3 +45,65 @@ def test_auth_register_login_stay_public(unauthenticated_client):
     for path in ("/api/v1/auth/register", "/api/v1/auth/login"):
         resp = unauthenticated_client.post(path, json={})
         assert resp.status_code != 403, f"{path} must stay reachable without the internal key"
+
+
+def _reg(keyed_client, **overrides):
+    body = {
+        "email": f"co-{uuid.uuid4().hex[:8]}@example.com",
+        "password": "personal-pass-1",
+        "role": "employer",
+    }
+    body.update(overrides)
+    return keyed_client.post("/api/v1/auth/register", json=body)
+
+
+def test_candidate_registers_with_only_personal_email(keyed_client):
+    """A job seeker needs nothing but a personal e-mail and a password."""
+    resp = keyed_client.post("/api/v1/auth/register", json={
+        "email": f"seeker-{uuid.uuid4().hex[:8]}@example.com",
+        "password": "personal-pass-1",
+        "role": "candidate",
+        "full_name": "İş Arayan",
+    })
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["role"] == "candidate"
+
+
+def test_employer_must_supply_company_name_and_tax_number(keyed_client):
+    # No company fields at all → rejected.
+    assert _reg(keyed_client, company_name="", tax_number="").status_code == 400
+    # Missing/invalid tax number → rejected.
+    assert _reg(
+        keyed_client, company_name="Acme A.Ş.", tax_number="12", company_size="1-5"
+    ).status_code == 400
+
+
+def test_small_employer_needs_no_corporate_email(keyed_client):
+    """A 1-5 person company is not asked for a corporate address."""
+    resp = _reg(
+        keyed_client,
+        company_name="Küçük Atölye",
+        tax_number="1234567890",
+        company_size="1-5",
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_large_employer_must_supply_corporate_email(keyed_client):
+    """Past 5 people, a corporate e-mail becomes required."""
+    without = _reg(
+        keyed_client,
+        company_name="Büyük Şirket A.Ş.",
+        tax_number="1234567890",
+        company_size="21-50",
+    )
+    assert without.status_code == 400, without.text
+
+    with_corp = _reg(
+        keyed_client,
+        company_name="Büyük Şirket A.Ş.",
+        tax_number="1234567890",
+        company_size="21-50",
+        company_email="ik@buyuksirket.com",
+    )
+    assert with_corp.status_code == 201, with_corp.text

@@ -4,6 +4,27 @@
 **Kapsam:** `eip-core` (FastAPI ai-engine + Next.js frontend) ve `eif-core-docs` depoları, dosya dosya incelendi.
 **Soru:** Son rötuşlara kaç adım kaldı?
 
+
+---
+
+> ## Güncelleme — 10 Ağustos 2026
+>
+> Aşağıdaki değerlendirme **6 Ağustos** tarihlidir ve birkaç satırı artık geçersizdir.
+> Tarihli kayıt olduğu için gövde değiştirilmedi; değişenler burada:
+>
+> | # | Kriter | 6 Ağustos | Bugün |
+> |---|---|---|---|
+> | 3 | KVKK / hesap silme | 🔴 Endpoint yok | ✅ `DELETE /auth/me` (`auth.py:393`), KVKK silme akışı; `ConsentLog` bilinçli olarak korunuyor (yasal kayıt) |
+> | 7 | Hata takibi | 🔴 Eksik | ✅ Sentry backend + frontend, DSN'ler Railway'de |
+> | 8 | Loglama & audit | 🔴 Yazan yok | ✅ `src/services/audit.py` — `AuditTrail` ve `ConsentLog` satırları yazılıyor |
+> | 6 | Health check yolu | 🟡 `/docs` | ✅ `ai-engine/railway.json` → `/health` |
+> | 10 | Frontend testleri | 🟡 Runner yok | ✅ `vitest run` tanımlı, 3 test dosyası |
+> | 12 | Veritabanı yedekleme | 🟡 "elle çalıştırılan CLI" | ⚠️ **Bu satır olduğundan iyimserdi.** `backup_db.py` Postgres kolunda hiçbir dosya üretmiyor, yalnızca `[SUCCESS]` yazıyordu — yani prodüksiyonun hiç yedeği yoktu. Script gerçek `pg_dump`/`psql` çalıştıracak şekilde düzeltildi ve `.github/workflows/backup.yml` ile günlük dış yedek eklendi. **Çalışması için R2 secret'ları girilmeli** — bkz. [YAPILACAKLAR](YAPILACAKLAR.md) |
+>
+> Kalan lansman engelleyicileri artık koda değil, harici hesaplara bağlı:
+> Railway Hobby planı (trial ~23 Ağustos'ta bitiyor), alan adı + Resend doğrulaması,
+> R2 bucket'ı ve prod admin ataması.
+
 ---
 
 ## 1. Yönetici Özeti

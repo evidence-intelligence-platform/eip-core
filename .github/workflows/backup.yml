@@ -1,0 +1,153 @@
+name: Database backup
+
+# Off-site backup of the production Postgres.
+#
+# Runs from GitHub rather than inside Railway on purpose: if Railway is the
+# thing that fails, a backup that only exists on Railway is no backup at all.
+#
+# Required repository secrets — the job fails loudly if any are missing, which
+# is the point. A backup that quietly does nothing is worse than none:
+#   DATABASE_URL          Postgres connection string (public/proxy host)
+#   R2_ACCOUNT_ID         Cloudflare account id
+#   R2_ACCESS_KEY_ID      R2 API token key id
+#   R2_SECRET_ACCESS_KEY  R2 API token secret
+#   R2_BUCKET             bucket name, e.g. eip-db-backups
+
+on:
+  schedule:
+    # 03:00 UTC daily — 06:00 in Türkiye.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Delete backups older than this many days'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+
+env:
+  # Must not be newer than the server's major version: a dump taken by a newer
+  # pg_dump can emit settings the older server rejects on restore. Bump this
+  # only after the Railway Postgres has been upgraded.
+  PG_MAJOR: '16'
+  RETENTION_DAYS: ${{ github.event.inputs.retention_days || '30' }}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check the job is configured
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          missing=""
+          for name in DATABASE_URL R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Backup is not configured. Missing repository secrets:$missing"
+            echo "Set them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "All required secrets are present."
+
+      - name: Install PostgreSQL ${{ env.PG_MAJOR }} client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          pg_dump --version
+
+      - name: Dump the database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%d_%H%M%S)"
+          name="eip_${stamp}.sql.gz"
+          echo "ARCHIVE=$name" >> "$GITHUB_ENV"
+
+          # --no-owner/--no-privileges keep the dump restorable into a database
+          # whose roles differ from production.
+          pg_dump --no-owner --no-privileges --format=plain "$DATABASE_URL" | gzip -9 > "$name"
+
+          size=$(stat -c%s "$name")
+          echo "Archive: $name ($size bytes)"
+          # An empty gzip member is ~20 bytes. Anything near that is a failed
+          # dump wearing a success costume.
+          if [ "$size" -lt 200 ]; then
+            echo "::error::Dump is suspiciously small ($size bytes) — refusing to upload."
+            exit 1
+          fi
+
+      - name: Verify the archive is readable
+        run: |
+          set -euo pipefail
+          gzip -t "$ARCHIVE"
+          # A valid dump ends with the marker pg_dump writes when it completes;
+          # a truncated stream would not reach it.
+          if ! gunzip -c "$ARCHIVE" | tail -5 | grep -q "PostgreSQL database dump complete"; then
+            echo "::error::Archive does not end with pg_dump's completion marker — it is truncated."
+            exit 1
+          fi
+          echo "Archive verified."
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "$ARCHIVE" "s3://${R2_BUCKET}/daily/${ARCHIVE}" \
+            --endpoint-url "$endpoint" --only-show-errors
+          echo "Uploaded daily/${ARCHIVE}"
+
+      - name: Prune backups older than ${{ env.RETENTION_DAYS }} days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          cutoff=$(date -u -d "${RETENTION_DAYS} days ago" +%s)
+          removed=0
+
+          aws s3 ls "s3://${R2_BUCKET}/daily/" --endpoint-url "$endpoint" | while read -r d t _ key; do
+            [ -z "${key:-}" ] && continue
+            ts=$(date -u -d "$d $t" +%s)
+            if [ "$ts" -lt "$cutoff" ]; then
+              aws s3 rm "s3://${R2_BUCKET}/daily/${key}" --endpoint-url "$endpoint" --only-show-errors
+              echo "Pruned $key"
+              removed=$((removed + 1))
+            fi
+          done
+          echo "Prune pass complete."
+
+      - name: Report
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### Backup succeeded — \`$ARCHIVE\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Backup FAILED — the database is unprotected today" >> "$GITHUB_STEP_SUMMARY"
+          fi

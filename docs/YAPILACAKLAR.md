@@ -40,10 +40,40 @@
 
 ## 4. Cloudflare hesabı + R2 (veritabanı yedekleme)
 
+> **Kod tarafı 10 Ağustos'ta bitti.** `.github/workflows/backup.yml` her gece
+> 03:00 UTC'de gerçek bir `pg_dump` alıp R2'ye yüklüyor, 30 günden eskileri
+> siliyor. Sadece aşağıdaki hesap ve secret'lar eksik; onlar girilene kadar iş
+> akışı **kasıtlı olarak hata verir** — sessizce atlamaz, çünkü çalışmadığı fark
+> edilmeyen bir yedekleme hiç olmamasından kötüdür.
+
 - Nereden: https://dash.cloudflare.com — R2 depolama 10 GB'a kadar ücretsiz
 - Yapılacak: hesap aç → R2 → bucket oluştur (örn. `eip-db-backups`) →
-  "Manage R2 API Tokens" ile erişim anahtarı üret → anahtar bilgilerini not et
-- Sonrası Claude'da: Railway "Postgres S3 Backup" şablonu + Cron ile günlük yedek kurulumu
+  "Manage R2 API Tokens" ile **Object Read & Write** yetkili token üret
+
+Sonra GitHub'da `Settings → Secrets and variables → Actions` altına beş secret:
+
+| Secret | Nereden alınır |
+|---|---|
+| `DATABASE_URL` | Railway → Postgres → Connect → **public/proxy** bağlantı dizesi |
+| `R2_ACCOUNT_ID` | Cloudflare panelinin sağ üstündeki Account ID |
+| `R2_ACCESS_KEY_ID` | R2 API token'ının key id'si |
+| `R2_SECRET_ACCESS_KEY` | R2 API token'ının secret'ı |
+| `R2_BUCKET` | Bucket adı, ör. `eip-db-backups` |
+
+Girdikten sonra Actions sekmesinden **Database backup → Run workflow** ile elle bir
+kez çalıştırıp yeşil olduğunu görün.
+
+**Üç uyarı:**
+
+1. `DATABASE_URL` bu **public** repoda secret olarak duracak. Secret'lar fork
+   PR'larına verilmez ve iş akışı yalnızca zamanlanmış/elle tetiklenir, ama
+   mümkünse yedekleme için salt-okunur bir DB kullanıcısı açıp onun dizesini girin.
+2. `PG_MAJOR` iş akışında `16` olarak sabit. **Railway Postgres'i yükseltirseniz
+   burayı da yükseltin** — istemci sunucudan yeniyse aldığı dump geri yüklenirken
+   sunucunun tanımadığı ayarlar yüzünden reddedilir. (Bu, kurulum sırasında
+   birebir yaşandı ve test edildi.)
+3. GitHub, public repolarda 60 gün hareketsizlik sonrası zamanlanmış iş akışlarını
+   devre dışı bırakır. Repo hareketsiz kalırsa Actions sekmesinden yeniden etkinleştirin.
 
 ## 5. Railway planını yükselt
 

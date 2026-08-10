@@ -19,6 +19,7 @@ import glob
 import gzip
 import os
 import shutil
+import subprocess
 import sys
 
 # Ensure root directory is in sys.path
@@ -67,12 +68,60 @@ def create_backup():
         print(f"[PATH] Saved to: {backup_path}")
 
     elif db_url.startswith("postgresql://") or db_url.startswith("postgres://"):
-        print("[BACKUP] PostgreSQL database detected. Generating pg_dump command...")
+        # This branch used to print SUCCESS without writing anything, so every
+        # production "backup" silently produced no file. It now runs pg_dump for
+        # real and fails loudly if it cannot.
+        print("[BACKUP] PostgreSQL database detected.")
+
+        pg_dump = shutil.which("pg_dump")
+        if not pg_dump:
+            print("[ERROR] pg_dump not found on PATH. Install the PostgreSQL client tools")
+            print("        (e.g. `apt-get install postgresql-client`) and retry.")
+            sys.exit(1)
+
         backup_name = f"postgres_backup_{timestamp}.sql.gz"
         backup_path = os.path.join(BACKUP_DIR, backup_name)
-        # Note: pg_dump would run via subprocess if pg_dump is available
-        print(f"[BACKUP] Target PostgreSQL backup archive: {backup_name}")
-        print("[SUCCESS] PostgreSQL backup configuration verified!")
+        partial_path = backup_path + ".partial"
+
+        print(f"[BACKUP] Dumping to {backup_name}...")
+        try:
+            with gzip.open(partial_path, "wb") as f_out:
+                proc = subprocess.Popen(
+                    [pg_dump, "--no-owner", "--no-privileges", "--format=plain", db_url],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                assert proc.stdout is not None
+                shutil.copyfileobj(proc.stdout, f_out)
+                proc.stdout.close()
+                stderr = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+                code = proc.wait()
+
+            if code != 0:
+                os.remove(partial_path)
+                print(f"[ERROR] pg_dump exited with code {code}")
+                if stderr.strip():
+                    print(stderr.strip())
+                sys.exit(1)
+
+            # A dump that produced almost nothing is a failure wearing a success
+            # costume — an empty gzip member is ~20 bytes.
+            if os.path.getsize(partial_path) < 200:
+                os.remove(partial_path)
+                print("[ERROR] pg_dump produced an empty archive — refusing to keep it.")
+                sys.exit(1)
+
+            os.replace(partial_path, backup_path)
+        except Exception as exc:  # noqa: BLE001 - the CLI reports and exits
+            if os.path.exists(partial_path):
+                os.remove(partial_path)
+            print(f"[ERROR] Backup failed: {exc}")
+            sys.exit(1)
+
+        size_kb = os.path.getsize(backup_path) / 1024
+        print(f"[SUCCESS] PostgreSQL dump written: {backup_name} ({size_kb:.1f} KB)")
+        print(f"[PATH] Saved to: {backup_path}")
+
     else:
         print(f"[ERROR] Unsupported DATABASE_URL scheme: {db_url}")
         sys.exit(1)
@@ -123,8 +172,49 @@ def restore_backup(backup_filename: str):
                 shutil.copyfileobj(f_in, f_out)
 
         print(f"[SUCCESS] Database successfully restored from {backup_filename}!")
+
+    elif db_url.startswith("postgresql://") or db_url.startswith("postgres://"):
+        # Previously this printed an error and exited 0, so a failed restore
+        # looked like a successful one to any caller checking the exit code.
+        psql = shutil.which("psql")
+        if not psql:
+            print("[ERROR] psql not found on PATH. Install the PostgreSQL client tools")
+            print("        (e.g. `apt-get install postgresql-client`) and retry.")
+            sys.exit(1)
+
+        if os.getenv("CONFIRM_RESTORE") != "yes":
+            print("[ABORT] Restoring overwrites the target database.")
+            print("        Re-run with CONFIRM_RESTORE=yes to proceed.")
+            sys.exit(1)
+
+        print(f"[RESTORE] Streaming {backup_filename} into the target database...")
+        try:
+            proc = subprocess.Popen(
+                [psql, "--quiet", "--set", "ON_ERROR_STOP=on", db_url],
+                stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            assert proc.stdin is not None
+            with gzip.open(backup_path, "rb") as f_in:
+                shutil.copyfileobj(f_in, proc.stdin)
+            proc.stdin.close()
+            stderr = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+            code = proc.wait()
+        except Exception as exc:  # noqa: BLE001 - the CLI reports and exits
+            print(f"[ERROR] Restore failed: {exc}")
+            sys.exit(1)
+
+        if code != 0:
+            print(f"[ERROR] psql exited with code {code}")
+            if stderr.strip():
+                print(stderr.strip())
+            sys.exit(1)
+
+        print(f"[SUCCESS] Database restored from {backup_filename}.")
+
     else:
-        print("[ERROR] Restore for non-SQLite databases requires pg_restore CLI.")
+        print(f"[ERROR] Unsupported DATABASE_URL scheme: {db_url}")
+        sys.exit(1)
 
 
 def prune_old_backups():

@@ -158,6 +158,9 @@ function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
         className="block rounded-md overflow-hidden border border-line bg-well"
         title="Görseli yeni sekmede aç"
       >
+        {/* eslint-disable-next-line @next/next/no-img-element -- the source
+            is an authenticated blob object-URL; next/image cannot optimize
+            or even load createObjectURL sources. */}
         <img
           src={imageUrl}
           alt={`Yüklenen kanıt görseli: ${item.media_filename || "adsız dosya"} (${item.candidate_external_id} adayı)`}

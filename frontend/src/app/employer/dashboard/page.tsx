@@ -4,11 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
-  getJobs,
   getApplications,
   createJob,
   updateApplicationStatus,
-  JobPosting,
   JobApplication,
   ProfessionCategory,
   ApiError,
@@ -20,7 +18,6 @@ export default function EmployerDashboard() {
   const { user, loading: authLoading } = useAuth();
   const isCandidate = user?.role === "candidate";
 
-  const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,11 +37,9 @@ export default function EmployerDashboard() {
     try {
       setLoading(true);
       setError(null);
-      const [jobsData, appsData] = await Promise.all([
-        getJobs(),
-        getApplications(),
-      ]);
-      setJobs(jobsData);
+      // Only applications render here; the jobs roster was fetched into
+      // state nothing ever read.
+      const appsData = await getApplications();
       setApplications(appsData);
     } catch (err: unknown) {
       if (err instanceof Error) {

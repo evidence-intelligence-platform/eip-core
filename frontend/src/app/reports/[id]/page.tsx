@@ -73,7 +73,6 @@ export default function ReportPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [decision, setDecision] = useState<string | null>(null);
 
   const fetchReport = async () => {
     try {

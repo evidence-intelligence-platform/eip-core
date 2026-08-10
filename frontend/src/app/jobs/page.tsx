@@ -12,8 +12,7 @@ import {
   analyzeCandidateFile,
   analyzeCandidateEvidence,
   JobPosting,
-  Candidate,
-  ProfessionCategory,
+  type FileAnalysisData,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { IconHumanReview, SealMark } from "@/components/illustrations";
@@ -40,7 +39,6 @@ const AI_STATUS_STYLES: Record<string, string> = {
 export default function JobListingsPage() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +64,7 @@ export default function JobListingsPage() {
   const [submitSuccessData, setSubmitSuccessData] = useState<{
     appId: number;
     candidateExtId: string;
-    aiResult?: any;
+    aiResult?: FileAnalysisData | null;
     extraSourcesCount: number;
     failedSources: string[];
   } | null>(null);

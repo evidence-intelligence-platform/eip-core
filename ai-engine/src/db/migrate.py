@@ -22,7 +22,6 @@ from sqlalchemy import Column, inspect, text
 from sqlmodel import SQLModel
 
 from alembic import command
-
 from src.db import models  # noqa: F401 — registers every table on SQLModel.metadata
 from src.db.database import engine
 

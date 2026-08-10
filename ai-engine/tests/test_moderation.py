@@ -157,7 +157,7 @@ def test_plain_text_upload_stays_approved_and_unstored(candidate_client, tmp_pat
 
     resp = _upload(
         candidate_client, candidate_id, "cv.txt",
-        "5 yıl yoğun bakım hemşiresi olarak çalıştım.".encode("utf-8"), "text/plain",
+        "5 yıl yoğun bakım hemşiresi olarak çalıştım.".encode(), "text/plain",
     )
 
     assert resp.status_code == 200, resp.text

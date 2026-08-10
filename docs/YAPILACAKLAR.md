@@ -1,8 +1,19 @@
 # Lansman Öncesi Yapılacaklar — Erol'un Listesi
 
-> Son güncelleme: 7 Ağustos 2026. Kod tarafı hazır (bkz. [LAUNCH_READINESS.md](LAUNCH_READINESS.md));
+> Son güncelleme: 10 Ağustos 2026. Kod tarafı hazır (bkz. [LAUNCH_READINESS.md](LAUNCH_READINESS.md));
 > aşağıdaki adımlar harici hesaplar gerektirdiği için elle yapılmalı.
-> Her adım tamamlandığında Claude'a "X'i yaptım" demek yeterli — entegrasyon kodunu o yazar.
+>
+> **10 Ağustos itibarıyla entegrasyon kodları da yazıldı:** e-posta servisi, şifre
+> sıfırlama akışı ve Sentry kurulumu repoda hazır ve test edilmiş durumda. Artık
+> "Claude entegrasyonu yazar" beklemek yok — aşağıdaki hesapları açıp anahtarları
+> Railway Variables'a girdiğin an özellikler kendiliğinden çalışmaya başlar:
+> - Resend → ai-engine servisine `RESEND_API_KEY`, `EMAIL_FROM` ve `FRONTEND_URL`
+>   (frontend'in public adresi)
+> - Sentry → ai-engine'e `SENTRY_DSN` (Python projesi); frontend'e `SENTRY_DSN` +
+>   `NEXT_PUBLIC_SENTRY_DSN` (Next.js projesi)
+>
+> Anahtar girilmediği sürece hiçbir şey bozulmaz: e-postalar motor loguna yazılır
+> (şifre sıfırlama bağlantısı logdan alınabilir), Sentry sessizce devre dışı kalır.
 
 ## 1. Alan adı satın al (diğer adımların ön koşulu)
 

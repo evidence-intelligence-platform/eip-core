@@ -7,13 +7,13 @@ Compliance: 05_DATABASE_SCHEMA.md — JOBS Entity
 """
 
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from src.db.database import get_session
-from datetime import datetime
-
 from src.db.models import Company, JobPosting, Requirement
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer

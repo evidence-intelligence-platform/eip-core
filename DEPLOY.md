@@ -39,6 +39,10 @@ the "Isolated Intelligence Zone" design in `eif-core-docs`.
   | `JWT_SECRET_KEY` | generate: `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
   | `GEMINI_API_KEY` | from https://aistudio.google.com/apikey |
   | `LLM_MODEL_NAME` | `gemini-2.5-flash` (optional, default) |
+  | `FRONTEND_URL` | the frontend's public URL (e.g. `https://<app>.up.railway.app`) — password reset links point here |
+  | `RESEND_API_KEY` | optional — from https://resend.com; without it e-mails are logged, not sent |
+  | `EMAIL_FROM` | optional — verified sender, e.g. `EIP <no-reply@yourdomain.com>` |
+  | `SENTRY_DSN` | optional — Python/FastAPI project DSN from https://sentry.io; empty = disabled |
 
   Migrations run automatically on boot (Dockerfile CMD).
 
@@ -52,6 +56,8 @@ the "Isolated Intelligence Zone" design in `eif-core-docs`.
   |---|---|
   | `EIP_API_URL` | `http://ai-engine.railway.internal:8080` — use the ai-engine service's private hostname and its PORT |
   | `EIP_INTERNAL_API_KEY` | same value as ai-engine's `INTERNAL_API_KEY` |
+  | `SENTRY_DSN` | optional — Next.js project DSN; tracks server-side (proxy) errors |
+  | `NEXT_PUBLIC_SENTRY_DSN` | optional — same DSN; inlined at build time for browser-side errors |
 
   Note: Railway private networking is HTTP within the project — the
   public edge still serves HTTPS to users.

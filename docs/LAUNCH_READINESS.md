@@ -45,6 +45,14 @@
 
 > **Güncelleme — 6 Ağustos 2026, akşam:** Bu listedeki 3. (hesap silme + ConsentLog), 4. (Kullanım Şartları sayfası), 7. (moderasyon katmanı; canlıda uçtan uca doğrulandı) numaralı engelleyiciler ile lansman sonrası listesindeki 8. (AuditTrail fiilen yazılıyor), 14. (rate limit `X-Forwarded-For` bazlı) ve 16. (healthcheck `/health`) numaralı maddeler tamamlandı. **Kalan lansman engelleyici: 4 adım** (1. e-posta altyapısı, 2. şifre sıfırlama, 5. Sentry, 6. otomatik yedekleme) — dördü de harici servis hesabı gerektirir.
 
+> **Güncelleme — 10 Ağustos 2026:** 1. (e-posta altyapısı), 2. (şifre sıfırlama) ve 5. (Sentry) **kod tarafında tamamlandı ve uçtan uca doğrulandı** (gerçek sunucu + Next.js proxy üzerinden: kayıt → bağlantı isteği → sıfırlama → yeni şifreyle giriş; 136 backend + 13 frontend testi yeşil).
+> - **E-posta:** `src/services/email_service.py` — Resend, SDK'sız düz HTTPS; `RESEND_API_KEY` yokken e-postalar motor loguna yazılır (sıfırlama bağlantısı dahil), akış dev ortamında da uçtan uca çalışır. Hoş geldin + şifre sıfırlama şablonları hazır.
+> - **Şifre sıfırlama:** `/api/v1/auth/forgot-password` + `/reset-password` (tek kullanımlık, 30 dk TTL, SHA-256 saklanan token; hesap-varlığı sızdırmaz; 60 sn cooldown), frontend `/sifremi-unuttum` + `/sifre-sifirla` sayfaları, login'de bağlantı. Migration: `passwordresettoken` tablosu.
+> - **Sentry:** backend `sentry-sdk[fastapi]` + frontend `@sentry/nextjs` (instrumentation dosyaları + `global-error.tsx`); DSN env boşken tamamen devre dışı — PII gönderimi kapalı.
+> - Ayrıca: frontend testleri Vitest'e taşındı ve CI'a bağlandı; yanlışlıkla commit'lenmiş 104 MB'lık `ai-engine/.venv/` git'ten çıkarıldı (`.gitignore`'a `.venv/` eklendi).
+>
+> **Erol'un yapması gerekenler** (docs/YAPILACAKLAR.md): Resend hesabı → `RESEND_API_KEY` + `EMAIL_FROM` + `FRONTEND_URL`, Sentry hesabı → iki `SENTRY_DSN`, Railway Postgres yedeklemesi (6. madde — tek kalan engelleyici) ve plan yükseltme. Anahtarlar girildiği an özellikler kendiliğinden aktifleşir; kod değişikliği gerekmez.
+
 ### Lansman engelleyici (yapılmadan duyuru yapılmamalı)
 
 1. **Transactional e-posta altyapısı** — (M) Resend/Postmark benzeri bir sağlayıcı bağlanmalı; şifre sıfırlama ve bildirimlerin ön koşulu. Bugün sistemde tek bir e-posta bile gönderilemiyor.

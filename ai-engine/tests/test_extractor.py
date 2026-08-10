@@ -16,7 +16,9 @@ NOTE: These tests require a valid GEMINI_API_KEY and make live API calls.
 """
 
 import pytest
+
 from src.models.schemas import EvidencePayload, ExtractRequest, Requirement
+
 
 @pytest.fixture
 def anyio_backend():
@@ -27,6 +29,7 @@ def anyio_backend():
 def _get_llm():
     """Helper to initialize LLM service, skipping tests if API key not set."""
     import os
+
     from src.services.llm_service import GeminiLLMService
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key or api_key == "test-placeholder-key-not-used-in-unit-tests":

@@ -38,6 +38,14 @@ services:
       # NOTE: the engine reads JWT_SECRET_KEY (src/security/jwt.py) — the old
       # JWT_SECRET name was silently ignored.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set it in .env}
+      # Optional integrations — all safely dormant when unset:
+      # without RESEND_API_KEY e-mails are logged instead of sent; without
+      # SENTRY_DSN error tracking is a no-op. FRONTEND_URL is where password
+      # reset links point (the public site address in production).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "8080:8080"
     depends_on:
@@ -58,6 +66,11 @@ services:
       # key never reaches the browser bundle anymore.
       EIP_API_URL: http://ai-engine:8080
       EIP_INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set it in .env}
+      # Optional error tracking (no-op when empty). The NEXT_PUBLIC_ variant
+      # is inlined at BUILD time, so for browser-side events in a compose
+      # build it must also be passed as a build arg; server-side tracking
+      # works with just this runtime var.
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "3000:3000"
     depends_on:

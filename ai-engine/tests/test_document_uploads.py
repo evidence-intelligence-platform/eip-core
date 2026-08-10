@@ -41,7 +41,7 @@ def _blank_pdf() -> bytes:
         (JPEG_HEADER + b"rest", "image", "image/jpeg"),
         (b"RIFF" + b"1234" + b"WEBP" + b"rest", "image", "image/webp"),
         (b"%PDF-1.7 rest", "pdf", "application/pdf"),
-        ("Sürücü belgesi: E sınıfı".encode("utf-8"), "text", "text/plain"),
+        ("Sürücü belgesi: E sınıfı".encode(), "text", "text/plain"),
     ],
 )
 def test_sniff_identifies_supported_types(data, expected_kind, expected_mime):
@@ -141,6 +141,6 @@ def test_consent_gate_still_blocks_without_consent(candidate_client):
             "requirement_id": "req_1",
             "consent_verified": "false",
         },
-        files={"file": ("cv.txt", "Yoğun bakım deneyimi".encode("utf-8"), "text/plain")},
+        files={"file": ("cv.txt", "Yoğun bakım deneyimi".encode(), "text/plain")},
     )
     assert resp.status_code in (400, 422)

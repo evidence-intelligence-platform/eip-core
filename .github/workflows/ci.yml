@@ -56,6 +56,11 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Frontend Unit Tests (Vitest)
+        run: |
+          cd frontend
+          npm test
+
       - name: Next.js Production Build Test
         run: |
           cd frontend

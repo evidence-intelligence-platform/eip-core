@@ -192,6 +192,37 @@ body {
   overflow-x: hidden;
 }
 
+/* Text selection carries the brand — brass ground, ink text. */
+::selection {
+  background: color-mix(in oklab, var(--brand) 80%, transparent);
+  color: var(--brand-ink);
+}
+
+/* Slim, warm scrollbar instead of the default gray slab. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--brand) 45%, var(--line-strong));
+}
+
 /* Fine paper grain over the whole app — inline SVG turbulence, no external
    requests. Sits above content at 3% so photos and text stay crisp. */
 body::after {
@@ -268,6 +299,11 @@ body::after {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Pressing should feel like pressing. */
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-brand {

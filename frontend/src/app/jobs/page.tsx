@@ -46,6 +46,7 @@ export default function JobListingsPage() {
 
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -149,10 +150,16 @@ export default function JobListingsPage() {
   }, []);
 
   const filteredJobs = jobs.filter((j) => {
-    if (selectedCategory === "ALL") return true;
-    // Real column now; the old title.includes() fallback never matched a
-    // Turkish job title against an English category key.
-    return j.category === selectedCategory;
+    if (selectedCategory !== "ALL" && j.category !== selectedCategory) {
+      // Real column now; the old title.includes() fallback never matched a
+      // Turkish job title against an English category key.
+      return false;
+    }
+    const q = searchQuery.trim().toLocaleLowerCase("tr");
+    if (!q) return true;
+    return [j.title, j.description, j.company_name]
+      .filter(Boolean)
+      .some((t) => String(t).toLocaleLowerCase("tr").includes(q));
   });
 
   const handleOpenApplyModal = (job: JobPosting) => {
@@ -316,6 +323,34 @@ export default function JobListingsPage() {
           </p>
         </div>
 
+        {/* Search */}
+        <div className="max-w-xl mx-auto relative">
+          <span
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-fg-mute pointer-events-none"
+            aria-hidden="true"
+          >
+            🔍
+          </span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Pozisyon, şirket veya anahtar kelime arayın…"
+            aria-label="İlanlarda ara"
+            className="field !pl-11 !py-3 !rounded-full text-sm"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Aramayı temizle"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full text-fg-mute hover:text-fg hover:bg-raised transition-colors text-sm"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         {/* Sector Category Filters */}
         <div className="flex flex-wrap items-center justify-center gap-2">
           {CATEGORIES.map((cat) => {
@@ -374,9 +409,15 @@ export default function JobListingsPage() {
             <p className="text-fg-soft text-base">
               {error
                 ? "İlanlar şu anda görüntülenemiyor."
+                : searchQuery.trim()
+                ? `"${searchQuery.trim()}" aramasıyla eşleşen ilan bulunamadı.`
                 : "Bu kategoride henüz aktif bir iş ilanı yayınlanmadı."}
             </p>
-            <p className="text-xs text-fg-mute">Farklı bir meslek kategorisi seçerek arama yapabilirsiniz.</p>
+            <p className="text-xs text-fg-mute">
+              {searchQuery.trim()
+                ? "Farklı bir anahtar kelime deneyin veya aramayı temizleyin."
+                : "Farklı bir meslek kategorisi seçerek arama yapabilirsiniz."}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6">

@@ -273,6 +273,10 @@ export default function Home() {
             />
             <Tilt className="relative">
               <DocumentSeal className="w-full max-w-md mx-auto animate-float" />
+              {/* The AI reading pass: a brass beam sweeps the certificate. */}
+              <div className="absolute inset-x-14 top-4 bottom-8 overflow-hidden pointer-events-none">
+                <div className="absolute left-0 top-0 w-full h-1/2 bg-gradient-to-b from-transparent via-brand/10 to-transparent animate-scanning" />
+              </div>
               {HERO_CHIPS.map((chip) => (
                 <span
                   key={chip.text}
@@ -417,6 +421,103 @@ export default function Home() {
                   </Link>
                 </div>
               </article>
+            </div>
+          </Reveal>
+        </section>
+
+        {/* ── Örnek rapor: ürünün kalbi ─────────────────────────────── */}
+        <section className="space-y-10">
+          <Reveal className="text-center space-y-3">
+            <p className="eyebrow">Ürünün kalbi</p>
+            <h2 className="text-title text-fg">İşte raporun kendisi</h2>
+            <p className="text-fg-soft max-w-2xl mx-auto">
+              Pazarlama görseli değil — platformun her başvuru için ürettiği
+              rapor formatının birebir örneği. Durum, gerekçe ve dayanak;
+              satır satır.
+            </p>
+          </Reveal>
+
+          <Reveal>
+            <div className="card border-gradient overflow-hidden max-w-3xl mx-auto">
+              {/* Report chrome */}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-line bg-well/60">
+                <div className="flex items-center gap-2.5">
+                  <SealMark className="w-5 h-5" aria-hidden="true" />
+                  <span className="text-xs font-mono text-fg-mute tracking-wider">
+                    ÖRNEK RAPOR · Kıdemli Aşçı ilanı
+                  </span>
+                </div>
+                <span className="badge bg-brand/10 text-brand border-brand/30 tabular-nums">
+                  2 / 3 gereksinim doğrulandı
+                </span>
+              </div>
+
+              {/* Rows — the real report's grammar: status, reasoning, source */}
+              <div className="divide-y divide-line">
+                {[
+                  {
+                    req: "Ustalık belgesi",
+                    status: "Doğrulandı",
+                    tone: "bg-ok/10 text-ok border-ok/30",
+                    rail: "border-l-ok/60",
+                    reason:
+                      "MEB onaylı Aşçılık Ustalık Belgesi sunuldu; belge numarası ve kurum adı okunabilir durumda.",
+                    source: "ustalik-belgesi.pdf · sayfa 1",
+                  },
+                  {
+                    req: "5+ yıl mutfak deneyimi",
+                    status: "Doğrulandı",
+                    tone: "bg-ok/10 text-ok border-ok/30",
+                    rail: "border-l-ok/60",
+                    reason:
+                      "Özgeçmişteki çalışma geçmişi kesintisiz 6 yılı gösteriyor; son işyeri referans bağlantısıyla tutarlı.",
+                    source: "ozgecmis.pdf · deneyim bölümü",
+                  },
+                  {
+                    req: "HACCP hijyen sertifikası",
+                    status: "Yetersiz Belge",
+                    tone: "bg-warn/10 text-warn border-warn/30",
+                    rail: "border-l-warn/60",
+                    reason:
+                      "Bu başlık için belge sunulmadı. Görüşmede sorulması önerilir — belge sonradan da yüklenebilir.",
+                    source: null,
+                  },
+                ].map((row) => (
+                  <div
+                    key={row.req}
+                    className={`px-6 py-5 space-y-2.5 border-l-2 ${row.rail} hover:bg-raised/50 transition-colors`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-fg">
+                        {row.req}
+                      </span>
+                      <span className={`badge uppercase tracking-wider ${row.tone}`}>
+                        {row.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-fg-soft leading-relaxed">
+                      <strong className="text-brand font-semibold uppercase tracking-wider text-[10px] mr-1.5">
+                        Gerekçe
+                      </strong>
+                      {row.reason}
+                    </p>
+                    {row.source && (
+                      <p className="text-[11px] font-mono text-fg-mute">
+                        DAYANAK: {row.source}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-6 py-4 border-t border-line bg-well/60 text-center">
+                <p className="text-xs text-fg-mute">
+                  Her satırda üç şey var: <span className="text-fg-soft">durum</span>,{" "}
+                  <span className="text-fg-soft">gerekçe</span> ve{" "}
+                  <span className="text-fg-soft">dayanak</span>. İşveren de aday
+                  da aynı raporu görür — pazarlık payı yok.
+                </p>
+              </div>
             </div>
           </Reveal>
         </section>

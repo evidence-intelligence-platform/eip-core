@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import BackgroundFX from "@/components/BackgroundFX";
+import ScrollProgress from "@/components/ScrollProgress";
 import { AuthProvider } from "@/context/AuthContext";
 
 // latin-ext is not optional here: without it ğ, ş, İ and friends fall back
@@ -57,6 +58,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-ground text-fg">
         <BackgroundFX />
+        <ScrollProgress />
         <AuthProvider>
           <Navbar />
           <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">

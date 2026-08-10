@@ -108,6 +108,10 @@ class Candidate(SQLModel, table=True):
     consent_granted: bool = Field(default=True, description="Crucial privacy flag for GDPR/CCPA")
     consent_timestamp: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Comma-separated category keys the candidate is interested in (e.g.
+    # "HEALTHCARE,EDUCATION"). Drives the personalized job feed; empty means
+    # "show everything". Editable from the hub at any time.
+    interests: str | None = Field(default=None)
 
 
 class Requirement(SQLModel, table=True):

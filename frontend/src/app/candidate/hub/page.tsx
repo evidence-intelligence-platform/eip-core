@@ -12,6 +12,8 @@ import {
   analyzeCandidateEvidence,
   getCandidateEvidences,
   isEvidenceApproved,
+  getMyInterests,
+  setMyInterests,
   JobPosting,
   JobApplication,
   Evidence,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { IconHumanReview } from "@/components/illustrations";
+import { CategoryIcon } from "@/components/CategoryIcon";
 
 const AI_STATUS_LABELS: Record<string, string> = {
   VERIFIED: "Doğrulandı",
@@ -38,6 +41,8 @@ const AI_STATUS_STYLES: Record<string, string> = {
 export default function CandidateEvidenceHub() {
   const { user, loading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [savingInterests, setSavingInterests] = useState(false);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
   const [accomplishments, setAccomplishments] = useState<AccomplishmentEntry[]>([]);
@@ -69,20 +74,42 @@ export default function CandidateEvidenceHub() {
   // is what broke the evidence chain between candidate and employer.
   const candidateExtId = user?.candidate_external_id ?? "";
 
+  // Toggle one interest category and persist the new set. Optimistic: the
+  // chip flips immediately, and a failed save rolls back with a message.
+  const toggleInterest = async (key: string) => {
+    const next = interests.includes(key)
+      ? interests.filter((k) => k !== key)
+      : [...interests, key];
+    const prev = interests;
+    setInterests(next);
+    setSavingInterests(true);
+    try {
+      const saved = await setMyInterests(next);
+      setInterests(saved);
+    } catch {
+      setInterests(prev);
+      setError("İlgi alanları kaydedilemedi. Lütfen tekrar deneyin.");
+    } finally {
+      setSavingInterests(false);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [jobsRes, appsRes, evRes] = await Promise.allSettled([
+      const [jobsRes, appsRes, evRes, intRes] = await Promise.allSettled([
         // Swallowing failures here made a broken backend look like an empty
         // account; allSettled lets us tell the two apart below.
         getJobs(),
         getApplications(),
         candidateExtId ? getCandidateEvidences(candidateExtId) : Promise.resolve([]),
+        getMyInterests(),
       ]);
       setJobs(jobsRes.status === "fulfilled" ? jobsRes.value : []);
       setApplications(appsRes.status === "fulfilled" ? appsRes.value : []);
       setEvidences(evRes.status === "fulfilled" ? evRes.value : []);
+      setInterests(intRes.status === "fulfilled" ? intRes.value : []);
 
       // A 404 on the evidence call just means this candidate has no record
       // yet (they have not applied anywhere) — that is an empty state, not a
@@ -298,6 +325,46 @@ export default function CandidateEvidenceHub() {
             kontrol edilir; tutarsızlıklar raporda görünür olur. Abartmaya gerek
             yok — gerçek belgeniz, süslü cümleden her zaman daha güçlüdür.
           </p>
+        </div>
+      </div>
+
+      {/* İlgi alanları — drives the personalized job feed */}
+      <div className="card card-glow p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold text-fg">İlgi alanlarınız</p>
+            <p className="text-xs text-fg-mute">
+              Seçtiğiniz sektörler İş İlanları sayfasında önce gösterilir. İstediğiniz
+              zaman değiştirebilirsiniz.
+            </p>
+          </div>
+          <span className="text-[11px] text-fg-mute">
+            {savingInterests
+              ? "Kaydediliyor…"
+              : interests.length > 0
+              ? `${interests.length} seçili`
+              : "Hepsi gösteriliyor"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SELECTABLE_CATEGORIES.map((c) => {
+            const active = interests.includes(c.key);
+            return (
+              <button
+                key={c.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleInterest(c.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 transition-all ${
+                  active
+                    ? "bg-brand border-brand text-brand-ink"
+                    : "bg-well border-line text-fg-soft hover:text-fg hover:border-brand/50"
+                }`}
+              >
+                <CategoryIcon k={c.key} className="w-3.5 h-3.5" /> {c.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

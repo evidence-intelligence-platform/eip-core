@@ -11,6 +11,7 @@ import {
   createApplication,
   analyzeCandidateFile,
   analyzeCandidateEvidence,
+  getMyInterests,
   JobPosting,
   type FileAnalysisData,
 } from "@/lib/api";
@@ -46,6 +47,7 @@ export default function JobListingsPage() {
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [interests, setInterests] = useState<string[]>([]);
 
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -148,6 +150,19 @@ export default function JobListingsPage() {
     fetchData();
   }, []);
 
+  // Interests load once auth resolves (fetchData runs on mount, before the
+  // AuthProvider has restored `user`). A signed-in candidate's picks lead the
+  // feed; best-effort, never blocks the page.
+  useEffect(() => {
+    if (user?.role === "candidate") {
+      getMyInterests()
+        .then(setInterests)
+        .catch(() => setInterests([]));
+    } else {
+      setInterests([]);
+    }
+  }, [user]);
+
   const filteredJobs = jobs.filter((j) => {
     if (selectedCategory !== "ALL" && j.category !== selectedCategory) {
       // Real column now; the old title.includes() fallback never matched a
@@ -160,6 +175,19 @@ export default function JobListingsPage() {
       .filter(Boolean)
       .some((t) => String(t).toLocaleLowerCase("tr").includes(q));
   });
+
+  // Personalized ordering: when the candidate has interests and is not
+  // actively filtering/searching, lead with jobs in their chosen sectors —
+  // stable within each group so the rest of the list keeps its order.
+  const personalized =
+    interests.length > 0 && selectedCategory === "ALL" && !searchQuery.trim();
+  const orderedJobs = personalized
+    ? [...filteredJobs].sort((a, b) => {
+        const ai = interests.includes(a.category as string) ? 0 : 1;
+        const bi = interests.includes(b.category as string) ? 0 : 1;
+        return ai - bi;
+      })
+    : filteredJobs;
 
   const handleOpenApplyModal = (job: JobPosting) => {
     setSelectedJob(job);
@@ -405,7 +433,7 @@ export default function JobListingsPage() {
               </div>
             ))}
           </div>
-        ) : filteredJobs.length === 0 ? (
+        ) : orderedJobs.length === 0 ? (
           <div className="card p-12 text-center space-y-4">
             <IconHumanReview className="w-14 h-14 mx-auto opacity-60" aria-hidden="true" />
             <p className="text-fg-soft text-base">
@@ -423,7 +451,13 @@ export default function JobListingsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6">
-            {filteredJobs.map((job) => (
+            {personalized && (
+              <p className="text-xs text-brand/90 flex items-center gap-1.5 -mb-2">
+                <span className="dot-live" aria-hidden="true" />
+                İlgi alanlarınıza göre sıralandı — düzenlemek için Aday Paneli.
+              </p>
+            )}
+            {orderedJobs.map((job) => (
               <div
                 key={job.id}
                 className="card card-lift p-8 space-y-5 relative overflow-hidden group"

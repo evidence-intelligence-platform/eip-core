@@ -258,6 +258,27 @@ export async function registerUser(
   return res.json();
 }
 
+/** The signed-in candidate's own interest categories (keys from lib/categories). */
+export async function getMyInterests(): Promise<string[]> {
+  const res = await fetch(`${API_URL}/candidates/me/interests`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "İlgi alanları alınamadı.");
+  return (await res.json()).interests ?? [];
+}
+
+/** Replaces the candidate's interests; returns the normalised list. */
+export async function setMyInterests(interests: string[]): Promise<string[]> {
+  const res = await fetch(`${API_URL}/candidates/me/interests`, {
+    method: "PUT",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ interests }),
+  });
+  if (!res.ok) throw await toApiError(res, "İlgi alanları kaydedilemedi.");
+  return (await res.json()).interests ?? [];
+}
+
 export async function getMe(token: string) {
   const res = await fetch(`${API_URL}/auth/me`, {
     headers: getHeaders(token),

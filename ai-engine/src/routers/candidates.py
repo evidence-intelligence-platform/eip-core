@@ -168,6 +168,56 @@ def create_candidate(
     session.refresh(candidate)
     return candidate
 
+class InterestsPayload(SQLModel):
+    interests: list[str]
+
+
+def _candidate_of(session: Session, user: CurrentUser) -> Candidate:
+    cand = session.exec(
+        select(Candidate).where(Candidate.user_id == user.get("user_id"))
+    ).first()
+    if not cand:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu hesaba bağlı bir aday profili bulunamadı.",
+        )
+    return cand
+
+
+@router.get("/me/interests", response_model=InterestsPayload)
+def get_my_interests(
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_user),
+):
+    """The signed-in candidate's own interest categories (empty = show all)."""
+    cand = _candidate_of(session, user)
+    keys = [k for k in (cand.interests or "").split(",") if k]
+    return InterestsPayload(interests=keys)
+
+
+@router.put("/me/interests", response_model=InterestsPayload)
+def set_my_interests(
+    payload: InterestsPayload,
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_user),
+):
+    """
+    Replaces the candidate's interests. Keys are short uppercase category
+    tokens; we normalise, dedupe and cap them, and store null for an empty
+    list ('show everything'). The client owns the canonical category list.
+    """
+    cleaned: list[str] = []
+    for raw in payload.interests[:20]:
+        key = str(raw).strip().upper()
+        if key and key.replace("_", "").isalnum() and key not in cleaned:
+            cleaned.append(key)
+    cand = _candidate_of(session, user)
+    cand.interests = ",".join(cleaned) if cleaned else None
+    session.add(cand)
+    session.commit()
+    return InterestsPayload(interests=cleaned)
+
+
 @router.get("/{external_id}", response_model=CandidateRead)
 def get_candidate(
     external_id: str,

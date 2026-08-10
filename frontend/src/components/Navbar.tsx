@@ -172,11 +172,12 @@ export default function Navbar() {
           className="flex items-center gap-2.5 text-fg hover:text-brand-strong transition-colors group shrink-0"
         >
           <SealMark className="w-7 h-7 shrink-0 transition-transform duration-500 group-hover:rotate-[20deg]" />
-          <span className="font-semibold tracking-tight text-lg leading-none">
-            EİP
-            <span className="hidden sm:inline text-fg-mute font-normal text-sm">
-              {" "}
-              — Evidence Intelligence Platform
+          <span className="leading-none flex items-baseline gap-2">
+            <span className="font-display font-semibold text-xl tracking-[0.02em]">
+              EİP
+            </span>
+            <span className="hidden sm:inline text-fg-mute font-normal text-xs tracking-wide">
+              Evidence Intelligence Platform
             </span>
           </span>
         </Link>

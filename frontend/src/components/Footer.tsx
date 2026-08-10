@@ -20,9 +20,11 @@ export default function Footer() {
       <div className="container mx-auto px-4 py-12 space-y-10 relative">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
           <div className="space-y-3">
-            <div className="flex items-center gap-2.5 text-fg font-semibold">
+            <div className="flex items-center gap-2.5 text-fg">
               <SealMark className="w-6 h-6" />
-              <span>EİP</span>
+              <span className="font-display font-semibold text-lg tracking-[0.02em]">
+                EİP
+              </span>
             </div>
             <p className="text-xs text-fg-soft leading-relaxed max-w-xs">
               Emeğin belgesi vardır. EİP, her meslekten insanın belgesiyle

@@ -214,6 +214,32 @@ def test_candidate_cannot_read_another_candidates_profile(candidate_client):
     assert resp.status_code == 403, resp.text
 
 
+def test_candidate_interests_round_trip(candidate_client):
+    """A candidate sets and reads back their own interest categories."""
+    from tests.conftest import create_candidate_profile
+
+    ext_id = f"cand_int_{uuid.uuid4().hex[:8]}"
+    create_candidate_profile(ext_id, user_id=901, name="İlgili Aday")
+
+    # Empty to begin with.
+    assert candidate_client.get("/api/v1/candidates/me/interests").json()["interests"] == []
+
+    # Set (with a bad token mixed in — it must be dropped/normalised).
+    resp = candidate_client.put(
+        "/api/v1/candidates/me/interests",
+        json={"interests": ["healthcare", "EDUCATION", "healthcare", "bad key!"]},
+    )
+    assert resp.status_code == 200, resp.text
+    saved = resp.json()["interests"]
+    assert saved == ["HEALTHCARE", "EDUCATION"]  # upper, deduped, invalid dropped
+
+    # Persisted.
+    assert candidate_client.get("/api/v1/candidates/me/interests").json()["interests"] == [
+        "HEALTHCARE",
+        "EDUCATION",
+    ]
+
+
 def test_candidate_profile_never_exposes_the_owning_account(candidate_client):
     """
     `user_id` is the internal account key every ownership check is built on and

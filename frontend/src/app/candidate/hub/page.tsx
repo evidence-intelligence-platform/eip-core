@@ -376,7 +376,7 @@ export default function CandidateEvidenceHub() {
                   >
                     {SELECTABLE_CATEGORIES.map((c) => (
                       <option key={c.key} value={c.key}>
-                        {c.icon} {c.label}
+                        {c.label}
                       </option>
                     ))}
                   </select>

@@ -19,10 +19,12 @@ function NavLink({
   href,
   children,
   accent = false,
+  onNavigate,
 }: {
   href: string;
   children: React.ReactNode;
   accent?: boolean;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -30,6 +32,7 @@ function NavLink({
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={`relative pb-0.5 font-medium rounded-sm transition-colors ${
         accent
@@ -52,9 +55,13 @@ function NavLink({
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const pathname = usePathname();
   const isEmployer = user?.role === "employer" || user?.role === "admin";
   const isCandidate = user?.role === "candidate";
   const isAdmin = user?.role === "admin";
+
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
 
   // A hairline of depth once the page moves — the bar reads as "floating"
   // over content instead of being part of it.
@@ -66,6 +73,70 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Close the drawer whenever the route changes — a tapped link must not
+  // leave the panel hanging open over the new page.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // While the drawer is open, lock body scroll and let Esc close it.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // The link set is identical on desktop and in the drawer; render it once.
+  const navLinks = (onNavigate?: () => void) => (
+    <>
+      <NavLink href="/jobs" onNavigate={onNavigate}>
+        İş İlanları
+      </NavLink>
+      {isEmployer && (
+        <>
+          <NavLink href="/employer/dashboard" accent onNavigate={onNavigate}>
+            İşveren Paneli
+          </NavLink>
+          <NavLink href="/candidates" onNavigate={onNavigate}>
+            Aday Havuzu
+          </NavLink>
+          <NavLink href="/requirements" onNavigate={onNavigate}>
+            Gereksinimler
+          </NavLink>
+        </>
+      )}
+      {isAdmin && (
+        <NavLink href="/admin/moderation" accent onNavigate={onNavigate}>
+          Moderasyon
+        </NavLink>
+      )}
+      {isCandidate && (
+        <NavLink href="/candidate/hub" accent onNavigate={onNavigate}>
+          Aday Paneli
+        </NavLink>
+      )}
+    </>
+  );
+
+  const roleBadge = user && (
+    <span
+      className={`badge uppercase tracking-wider ${
+        isEmployer
+          ? "bg-brand/10 text-brand border-brand/30"
+          : "bg-ok/10 text-ok border-ok/30"
+      }`}
+    >
+      {ROLE_LABELS[user.role] ?? user.role}
+    </span>
+  );
+
   return (
     <nav
       className={`sticky top-0 z-40 border-b bg-ground/90 backdrop-blur-md transition-shadow duration-300 ${
@@ -74,10 +145,12 @@ export default function Navbar() {
           : "border-line"
       }`}
     >
-      <div className="container mx-auto p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
+        {/* Brand */}
         <Link
           href="/"
-          className="flex items-center gap-2.5 text-fg hover:text-brand-strong transition-colors group"
+          onClick={close}
+          className="flex items-center gap-2.5 text-fg hover:text-brand-strong transition-colors group shrink-0"
         >
           <SealMark className="w-7 h-7 shrink-0 transition-transform duration-500 group-hover:rotate-[20deg]" />
           <span className="font-semibold tracking-tight text-lg leading-none">
@@ -89,49 +162,17 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
-          {/* Always visible */}
-          <NavLink href="/jobs">İş İlanları</NavLink>
+        {/* ── Desktop nav (md+) ─────────────────────────────────────── */}
+        <div className="hidden md:flex items-center gap-x-5 gap-y-2 text-sm">
+          {navLinks()}
 
-          {/* Employer links */}
-          {isEmployer && (
-            <>
-              <NavLink href="/employer/dashboard" accent>
-                İşveren Paneli
-              </NavLink>
-              <NavLink href="/candidates">Aday Havuzu</NavLink>
-              <NavLink href="/requirements">Gereksinimler</NavLink>
-            </>
-          )}
-
-          {/* Admin links */}
-          {isAdmin && (
-            <NavLink href="/admin/moderation" accent>
-              Moderasyon
-            </NavLink>
-          )}
-
-          {/* Candidate links */}
-          {isCandidate && (
-            <NavLink href="/candidate/hub" accent>
-              Aday Paneli
-            </NavLink>
-          )}
-
-          {/* Auth section */}
           {user ? (
-            <div className="flex flex-wrap items-center gap-3 md:pl-4 md:border-l md:border-line">
+            <div className="flex items-center gap-3 pl-4 border-l border-line">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-fg-soft">{user.email}</span>
-                <span
-                  className={`badge uppercase tracking-wider ${
-                    isEmployer
-                      ? "bg-brand/10 text-brand border-brand/30"
-                      : "bg-ok/10 text-ok border-ok/30"
-                  }`}
-                >
-                  {ROLE_LABELS[user.role] ?? user.role}
+                <span className="text-xs text-fg-soft max-w-[14ch] truncate">
+                  {user.email}
                 </span>
+                {roleBadge}
               </div>
               <Link
                 href="/hesap"
@@ -147,7 +188,7 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3 md:pl-4 md:border-l md:border-line">
+            <div className="flex items-center gap-3 pl-4 border-l border-line">
               <Link
                 href="/login"
                 className="px-3 py-1.5 text-xs font-semibold text-fg-soft hover:text-fg transition-colors rounded-sm"
@@ -162,6 +203,107 @@ export default function Navbar() {
               </Link>
             </div>
           )}
+        </div>
+
+        {/* ── Mobile: role badge + hamburger (< md) ─────────────────── */}
+        <div className="flex md:hidden items-center gap-3">
+          {roleBadge}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? "Menüyü kapat" : "Menüyü aç"}
+            aria-expanded={open}
+            aria-controls="mobil-menu"
+            className="relative w-10 h-10 -mr-1.5 inline-flex items-center justify-center rounded-md text-fg hover:bg-raised transition-colors"
+          >
+            {/* Three bars that morph into an X */}
+            <span className="sr-only">Menü</span>
+            <span aria-hidden="true" className="block w-5 h-4 relative">
+              <span
+                className={`absolute left-0 top-0 h-0.5 w-5 bg-current rounded-full transition-transform duration-300 ${
+                  open ? "translate-y-[7px] rotate-45" : ""
+                }`}
+              />
+              <span
+                className={`absolute left-0 top-[7px] h-0.5 w-5 bg-current rounded-full transition-opacity duration-200 ${
+                  open ? "opacity-0" : "opacity-100"
+                }`}
+              />
+              <span
+                className={`absolute left-0 top-[14px] h-0.5 w-5 bg-current rounded-full transition-transform duration-300 ${
+                  open ? "-translate-y-[7px] -rotate-45" : ""
+                }`}
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile drawer ───────────────────────────────────────────── */}
+      {/* Dim backdrop */}
+      <div
+        onClick={close}
+        aria-hidden="true"
+        className={`fixed inset-0 top-16 z-30 bg-well/70 backdrop-blur-sm md:hidden transition-opacity duration-300 ${
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      />
+      {/* Sliding panel */}
+      <div
+        id="mobil-menu"
+        className={`fixed inset-x-0 top-16 z-30 md:hidden origin-top bg-ground border-b border-line-strong shadow-2xl transition-[transform,opacity] duration-300 ${
+          open
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 -translate-y-3 pointer-events-none"
+        }`}
+      >
+        <div className="container mx-auto px-4 py-5 flex flex-col gap-1 text-base">
+          <div className="flex flex-col gap-1 [&>a]:py-2.5 [&>a]:text-lg">
+            {navLinks(close)}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-line">
+            {user ? (
+              <div className="space-y-3">
+                <p className="text-xs text-fg-mute break-all">{user.email}</p>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href="/hesap"
+                    onClick={close}
+                    className="btn btn-quiet flex-1 text-sm"
+                  >
+                    Hesabım
+                  </Link>
+                  <button
+                    onClick={() => {
+                      close();
+                      logout();
+                    }}
+                    className="btn btn-quiet flex-1 text-sm"
+                  >
+                    Çıkış Yap
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/login"
+                  onClick={close}
+                  className="btn btn-quiet flex-1"
+                >
+                  Giriş Yap
+                </Link>
+                <Link
+                  href="/register"
+                  onClick={close}
+                  className="btn btn-brand btn-shine flex-1"
+                >
+                  Hesap Oluştur
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </nav>

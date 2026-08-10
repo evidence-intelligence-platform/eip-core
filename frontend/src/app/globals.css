@@ -372,9 +372,9 @@ body::after {
 
 .reveal {
   opacity: 0;
-  transform: translateY(26px);
-  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(20px);
+  transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: opacity, transform;
 }
 
@@ -384,7 +384,7 @@ body::after {
 }
 
 .reveal-stagger.is-visible > * {
-  animation: fade-in-up 0.65s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: fade-in-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .reveal-stagger.is-visible > *:nth-child(1) { animation-delay: 0.05s; }
@@ -501,6 +501,16 @@ body::after {
   display: flex;
   gap: 0.625rem;
   width: max-content;
+}
+
+/* Hide the scrollbar on horizontal filter strips while keeping them
+   scrollable by wheel/drag/touch. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .ticker-row:hover {

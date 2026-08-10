@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
-import { CATEGORIES, categoryIcon, categoryLabel, type CategoryKey } from "@/lib/categories";
+import { CATEGORIES, categoryLabel, type CategoryKey } from "@/lib/categories";
 import {
   getJobs,
   getCandidate,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { IconHumanReview, SealMark } from "@/components/illustrations";
+import { CategoryIcon, SearchIcon } from "@/components/CategoryIcon";
 
 const AI_STATUS_LABELS: Record<string, string> = {
   VERIFIED: "Doğrulandı",
@@ -323,12 +324,7 @@ export default function JobListingsPage() {
 
         {/* Search */}
         <div className="max-w-xl mx-auto relative">
-          <span
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-fg-mute pointer-events-none"
-            aria-hidden="true"
-          >
-            🔍
-          </span>
+          <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-mute pointer-events-none" />
           <input
             type="search"
             value={searchQuery}
@@ -349,25 +345,33 @@ export default function JobListingsPage() {
           )}
         </div>
 
-        {/* Sector Category Filters */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {CATEGORIES.map((cat) => {
-            const active = selectedCategory === cat.key;
-            return (
-              <button
-                key={cat.key}
-                onClick={() => setSelectedCategory(cat.key)}
-                aria-pressed={active}
-                className={`px-4 py-2 rounded-md text-xs font-semibold border transition-all duration-200 flex items-center gap-1.5 ${
-                  active
-                    ? "bg-brand border-brand text-brand-ink scale-[1.04] shadow-lg shadow-brand/20"
-                    : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50 hover:-translate-y-0.5"
-                }`}
-              >
-                <span aria-hidden="true">{cat.icon}</span> {cat.label}
-              </button>
-            );
-          })}
+        {/* Sector filters — a single horizontal strip with faded edges, so
+            18 sectors take one row (not three) and an actual job card stays
+            above the fold. The strip scrolls by wheel/drag/touch; the active
+            chip scrolls itself into view. Mobile-first by construction. */}
+        <div className="ticker-mask -mx-4 px-4">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar snap-x">
+            {CATEGORIES.map((cat) => {
+              const active = selectedCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  onClick={(e) => {
+                    setSelectedCategory(cat.key);
+                    e.currentTarget.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+                  }}
+                  aria-pressed={active}
+                  className={`shrink-0 snap-start px-4 py-2 rounded-full text-xs font-semibold border transition-all duration-200 inline-flex items-center gap-1.5 ${
+                    active
+                      ? "bg-brand border-brand text-brand-ink shadow-lg shadow-brand/20"
+                      : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50"
+                  }`}
+                >
+                  <CategoryIcon k={cat.key} className="w-4 h-4" /> {cat.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {error && (
@@ -441,8 +445,8 @@ export default function JobListingsPage() {
                     <p className="text-xs text-fg-mute mt-1.5 flex flex-wrap items-center gap-x-2">
                       <span>{job.company_name || "EİP Partner Kurum"}</span>
                       <span aria-hidden="true">·</span>
-                      <span>
-                        <span aria-hidden="true">{categoryIcon(job.category)} </span>
+                      <span className="inline-flex items-center gap-1">
+                        <CategoryIcon k={job.category || "OTHER"} className="w-3.5 h-3.5" />
                         {categoryLabel(job.category)}
                       </span>
                       <span aria-hidden="true">·</span>

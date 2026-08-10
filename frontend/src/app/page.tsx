@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
 import Tilt from "@/components/Tilt";
+import { CategoryIcon, PersonIcon, BuildingIcon } from "@/components/CategoryIcon";
 import {
   DocumentSeal,
   MagnifierDoc,
@@ -104,24 +105,26 @@ const STATS = [
   { value: 0, suffix: "", label: "onaysız işlem", note: "onay her zaman sizde" },
 ];
 
-/** Decorative verification chips floating around the hero illustration. */
+/** Decorative verification chips floating around the hero illustration.
+    Positioned clear of the document's centre and seal so they never sit on
+    top of the artwork's busy areas. */
 const HERO_CHIPS = [
   {
-    cls: "top-6 -left-2 lg:-left-6",
+    cls: "-top-2 left-2 lg:-left-6",
     delay: "0s",
     tone: "text-ok border-ok/30 bg-ok/10",
     text: "✓ Sertifika doğrulandı",
   },
   {
-    cls: "bottom-24 -right-2 lg:-right-8",
+    cls: "top-1/3 -right-3 lg:-right-10",
     delay: "1.6s",
     tone: "text-brand border-brand/30 bg-brand/10",
     text: "Gerekçe: belge no · kurum · tarih",
   },
   {
-    cls: "bottom-4 left-8",
+    cls: "-bottom-3 left-4 lg:left-0",
     delay: "0.9s",
-    tone: "text-fg-soft border-line-strong bg-raised/90",
+    tone: "text-fg-soft border-line-strong bg-raised/95",
     text: "İnsan incelemesinden geçti",
   },
 ];
@@ -355,9 +358,7 @@ export default function Home() {
                   <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
                     Aday
                   </span>
-                  <span className="text-3xl" aria-hidden="true">
-                    🧑‍🔧
-                  </span>
+                  <PersonIcon className="w-8 h-8 text-ok" />
                 </div>
                 <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
                   Emeğinizi görünür kılın
@@ -390,9 +391,7 @@ export default function Home() {
                   <span className="badge bg-brand/10 text-brand border-brand/30 uppercase tracking-wider">
                     İşveren
                   </span>
-                  <span className="text-3xl" aria-hidden="true">
-                    🏢
-                  </span>
+                  <BuildingIcon className="w-8 h-8 text-brand" />
                 </div>
                 <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
                   Kanıta bakarak seçin
@@ -580,7 +579,7 @@ export default function Home() {
                       tabIndex={i >= SELECTABLE_CATEGORIES.length ? -1 : 0}
                       className="px-4 py-2.5 rounded-md bg-surface border border-line text-sm text-fg-soft hover:text-fg hover:border-brand/50 hover:bg-raised transition-colors flex items-center gap-2 whitespace-nowrap"
                     >
-                      <span aria-hidden="true">{c.icon}</span> {c.label}
+                      <CategoryIcon k={c.key} className="w-4 h-4 shrink-0" /> {c.label}
                     </Link>
                   )
                 )}
@@ -599,7 +598,7 @@ export default function Home() {
                     tabIndex={-1}
                     className="px-4 py-2.5 rounded-md bg-surface border border-line text-sm text-fg-soft hover:text-fg hover:border-brand/50 hover:bg-raised transition-colors flex items-center gap-2 whitespace-nowrap"
                   >
-                    <span aria-hidden="true">{c.icon}</span> {c.label}
+                    <CategoryIcon k={c.key} className="w-4 h-4 shrink-0" /> {c.label}
                   </Link>
                 ))}
               </div>

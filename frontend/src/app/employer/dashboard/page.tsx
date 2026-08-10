@@ -277,7 +277,7 @@ export default function EmployerDashboard() {
                   >
                     {SELECTABLE_CATEGORIES.map((c) => (
                       <option key={c.key} value={c.key}>
-                        {c.icon} {c.label}
+                        {c.label}
                       </option>
                     ))}
                   </select>

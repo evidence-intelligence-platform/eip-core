@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { PersonIcon, BuildingIcon } from "@/components/CategoryIcon";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -84,13 +85,13 @@ export default function RegisterPage() {
               [
                 {
                   value: "candidate",
-                  icon: "🧑‍🔧",
+                  Icon: PersonIcon,
                   title: "İş Arıyorum",
                   hint: "Belgemle başvuracağım",
                 },
                 {
                   value: "employer",
-                  icon: "🏢",
+                  Icon: BuildingIcon,
                   title: "İşveren / İlan Veren",
                   hint: "Kanıta bakarak seçeceğim",
                 },
@@ -110,7 +111,7 @@ export default function RegisterPage() {
                   }`}
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold">
-                    <span aria-hidden="true">{opt.icon}</span>
+                    <opt.Icon className={`w-5 h-5 shrink-0 ${active ? "text-brand" : "text-fg-mute"}`} />
                     {opt.title}
                     {active && (
                       <span className="ml-auto text-brand" aria-hidden="true">

@@ -66,8 +66,20 @@ kez çalıştırıp yeşil olduğunu görün.
 **Üç uyarı:**
 
 1. `DATABASE_URL` bu **public** repoda secret olarak duracak. Secret'lar fork
-   PR'larına verilmez ve iş akışı yalnızca zamanlanmış/elle tetiklenir, ama
-   mümkünse yedekleme için salt-okunur bir DB kullanıcısı açıp onun dizesini girin.
+   PR'larına verilmez ve iş akışı yalnızca zamanlanmış/elle tetiklenir, ama yine de
+   o dizenin yetkisi "veriyi okuyabilir" olmalı, "veritabanının sahibi" değil.
+   Bunun için hazır script var — Railway Postgres'e bir kez, superuser ile:
+
+   ```bash
+   psql "$ADMIN_DATABASE_URL" -v pw="'uzun-rastgele-bir-parola'"         -f ai-engine/scripts/create_backup_role.sql
+   ```
+
+   Sonra `DATABASE_URL` secret'ını sahibin değil bu rolün dizesinden kurun:
+   `postgresql://eip_backup:<parola>@<host>:<port>/<db>`
+
+   Rol yalnızca SELECT alır; INSERT ve CREATE TABLE denemeleri reddedilir.
+   Alembic'in ileride ekleyeceği tablolar da otomatik kapsanır (default
+   privileges) — yoksa migration sonrası ilk yedek yeni tabloyu sessizce atlardı.
 2. `PG_MAJOR` iş akışında `16` olarak sabit. **Railway Postgres'i yükseltirseniz
    burayı da yükseltin** — istemci sunucudan yeniyse aldığı dump geri yüklenirken
    sunucunun tanımadığı ayarlar yüzünden reddedilir. (Bu, kurulum sırasında

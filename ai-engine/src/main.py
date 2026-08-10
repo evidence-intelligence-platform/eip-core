@@ -19,13 +19,14 @@ AUDIT FIXES (2026-07-22):
     before any deployment.
 """
 
+import os
 from contextlib import asynccontextmanager
 
-from pydantic import ValidationError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse
+from pydantic import ValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -47,10 +48,28 @@ from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_user
 from src.services.audit import record_consent
 from src.services.base_llm import BaseLLMService
-from src.services.llm_service import GeminiLLMService
 from src.services.file_policy import MAX_UPLOAD_BYTES, read_upload_limited, sniff_kind
-from src.services.pdf_service import extract_text_from_pdf_bytes, extract_text_or_flag_scanned
+from src.services.llm_service import GeminiLLMService
+from src.services.pdf_service import extract_text_or_flag_scanned
 from src.services.storage import sanitize_filename, save_upload
+
+# Error tracking (LAUNCH_READINESS launch blocker #5). Both the import and the
+# init are behind the DSN check: without SENTRY_DSN this is a complete no-op,
+# so local runs and CI never need the SDK configured (it is installed but
+# dormant). Set the DSN in Railway Variables to activate.
+_SENTRY_DSN = os.getenv("SENTRY_DSN")
+if _SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        # KVKK: no e-mail addresses, usernames or client IPs in events unless
+        # explicitly opted into later.
+        send_default_pii=False,
+    )
+
 
 def _client_ip(request: Request) -> str | None:
     """

@@ -456,7 +456,11 @@ export default function JobListingsPage() {
                     <p className="text-xs text-fg-soft">
                       {submitSuccessData.aiResult?.review_status === "pending"
                         ? "Belgeniz incelemeye alındı; işverene gösterilmeden önce ekibimiz tarafından kontrol edilir. Sizin yapmanız gereken bir şey yok."
-                        : "Belgeleriniz işverenin değerlendirme ekranına aktarıldı."}
+                        : submitSuccessData.extraSourcesCount > 0
+                        ? "Belgeleriniz işverenin değerlendirme ekranına aktarıldı."
+                        : // No source made it through — claiming the employer received
+                          // documents here would contradict the failure notice below.
+                          "Başvurunuz işverenin ekranına düştü; işlenen belge olmadığı için rapor şimdilik boş görünecek."}
                     </p>
                     {submitSuccessData.failedSources.length > 0 && (
                       <p className="text-xs text-warn border-t border-ok/20 pt-2">

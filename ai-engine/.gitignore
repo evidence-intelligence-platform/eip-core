@@ -5,7 +5,10 @@
 # They contain candidate evidence data and AI extraction results.
 
 # Virtual Environment
+# .venv/ was missing here, so a full 104 MB virtualenv (3705 files) sat
+# committed in the public repo until 2026-08-10. Both spellings stay listed.
 venv/
+.venv/
 
 # Python Cache
 __pycache__/

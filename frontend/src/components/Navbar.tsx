@@ -62,6 +62,7 @@ export default function Navbar() {
 
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  const [acctOpen, setAcctOpen] = useState(false);
 
   // A hairline of depth once the page moves — the bar reads as "floating"
   // over content instead of being part of it.
@@ -73,11 +74,29 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close the drawer whenever the route changes — a tapped link must not
-  // leave the panel hanging open over the new page.
+  // Close the drawer and the account menu whenever the route changes — a
+  // tapped link must not leave either hanging open over the new page.
   useEffect(() => {
     setOpen(false);
+    setAcctOpen(false);
   }, [pathname]);
+
+  // Dismiss the account menu on any outside click or Esc.
+  useEffect(() => {
+    if (!acctOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-acct-menu]")) setAcctOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAcctOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [acctOpen]);
 
   // While the drawer is open, lock body scroll and let Esc close it.
   useEffect(() => {
@@ -167,25 +186,59 @@ export default function Navbar() {
           {navLinks()}
 
           {user ? (
-            <div className="flex items-center gap-3 pl-4 border-l border-line">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-fg-soft max-w-[14ch] truncate">
-                  {user.email}
+            <div className="relative pl-4 border-l border-line" data-acct-menu>
+              <button
+                type="button"
+                onClick={() => setAcctOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={acctOpen}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-raised transition-colors"
+              >
+                <span className="w-7 h-7 rounded-full bg-brand/15 border border-brand/30 text-brand inline-flex items-center justify-center text-xs font-semibold uppercase">
+                  {(user.email?.[0] ?? "?").toLocaleUpperCase("tr")}
                 </span>
                 {roleBadge}
-              </div>
-              <Link
-                href="/hesap"
-                className="text-xs font-semibold text-fg-soft hover:text-fg transition-colors rounded-sm"
-              >
-                Hesap
-              </Link>
-              <button
-                onClick={logout}
-                className="px-3 py-1.5 rounded-md border border-line-strong text-xs font-semibold text-fg-soft hover:text-fg hover:border-brand transition-colors"
-              >
-                Çıkış Yap
+                <span
+                  aria-hidden="true"
+                  className={`text-fg-mute text-[10px] transition-transform duration-200 ${
+                    acctOpen ? "rotate-180" : ""
+                  }`}
+                >
+                  ▾
+                </span>
               </button>
+
+              {/* Dropdown */}
+              <div
+                role="menu"
+                className={`absolute right-0 top-full mt-2 w-56 origin-top-right card border-line-strong shadow-2xl p-1.5 transition-[opacity,transform] duration-200 ${
+                  acctOpen
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 -translate-y-1 pointer-events-none"
+                }`}
+              >
+                <p className="px-3 pt-2 pb-1 text-xs text-fg-mute break-all">
+                  {user.email}
+                </p>
+                <Link
+                  href="/hesap"
+                  role="menuitem"
+                  onClick={() => setAcctOpen(false)}
+                  className="block px-3 py-2 rounded-md text-sm text-fg-soft hover:text-fg hover:bg-raised transition-colors"
+                >
+                  Hesabım
+                </Link>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAcctOpen(false);
+                    logout();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm text-fg-soft hover:text-err hover:bg-err/10 transition-colors"
+                >
+                  Çıkış Yap
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-3 pl-4 border-l border-line">

@@ -275,7 +275,7 @@ export default function Home() {
               }}
             />
             <Tilt className="relative">
-              <DocumentSeal className="w-full max-w-md mx-auto animate-float" />
+              <DocumentSeal className="w-full max-w-md mx-auto animate-float [filter:drop-shadow(0_24px_50px_rgba(0,0,0,0.55))]" />
               {/* The AI reading pass: a brass beam sweeps the certificate. */}
               <div className="absolute inset-x-14 top-4 bottom-8 overflow-hidden pointer-events-none">
                 <div className="absolute left-0 top-0 w-full h-1/2 bg-gradient-to-b from-transparent via-brand/10 to-transparent animate-scanning" />
@@ -413,7 +413,7 @@ export default function Home() {
                 <div className="pt-2">
                   <Link
                     href={isEmployer ? "/employer/dashboard" : "/register"}
-                    className="btn btn-quiet w-full sm:w-auto"
+                    className="btn btn-brand btn-shine w-full sm:w-auto"
                   >
                     {isEmployer ? "Panelinize dönün" : "İlk ilanınızı yayınlayın"}
                     <span aria-hidden="true">&rarr;</span>

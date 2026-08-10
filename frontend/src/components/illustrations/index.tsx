@@ -76,14 +76,15 @@ export function DocumentSeal({ className }: IllustrationProps) {
         stroke={LINE}
         strokeWidth="2"
       />
-      {/* Front certificate */}
+      {/* Front certificate — a lifted "paper" panel (raised surface) so the
+          document reads as a solid object, not a wireframe of loose lines. */}
       <rect
         x="64"
         y="24"
         width="128"
         height="158"
         rx="10"
-        fill="var(--surface)"
+        fill="var(--raised)"
         stroke={LINE}
         strokeWidth="2.5"
       />

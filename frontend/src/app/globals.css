@@ -123,6 +123,31 @@
   }
 }
 
+/* Aurora: soft brass light that breathes and wanders behind the hero. Each
+   blob runs this on its own duration/delay so they never sync up. */
+@keyframes aurora {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(6%, -4%, 0) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-3%, 5%, 0) scale(0.95);
+    opacity: 0.65;
+  }
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(8px);
+  will-change: transform, opacity;
+  animation: aurora var(--aurora-dur, 18s) ease-in-out infinite alternate;
+}
+
 /* Live indicator dot — "YAYINDA" and friends. */
 @keyframes pulse-dot {
   0%,

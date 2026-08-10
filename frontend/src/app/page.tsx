@@ -136,24 +136,36 @@ export default function Home() {
 
   return (
     <div className="relative">
-      {/* Ambient ground: two slow brass glows + one cool counterweight.
-          All decorative, all behind content. */}
+      {/* Aurora ground: three soft brass lights that breathe and wander,
+          each on its own tempo. Decorative, behind everything. */}
       <div
-        className="absolute inset-x-0 top-0 h-[44rem] -z-10 pointer-events-none overflow-hidden"
+        className="absolute inset-x-0 top-0 h-[46rem] -z-10 pointer-events-none overflow-hidden"
         aria-hidden="true"
       >
         <div
-          className="absolute -top-32 right-[-10%] w-[42rem] h-[42rem] rounded-full animate-drift"
+          className="aurora-blob -top-40 right-[-12%] w-[44rem] h-[44rem]"
           style={{
+            ["--aurora-dur" as string]: "19s",
             background:
-              "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 13%, transparent), transparent 70%)",
+              "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 15%, transparent), transparent 70%)",
           }}
         />
         <div
-          className="absolute top-40 left-[-14%] w-[36rem] h-[36rem] rounded-full animate-drift-slow"
+          className="aurora-blob top-32 left-[-16%] w-[38rem] h-[38rem]"
           style={{
+            ["--aurora-dur" as string]: "26s",
+            animationDelay: "-6s",
             background:
-              "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 7%, transparent), transparent 70%)",
+              "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 8%, transparent), transparent 70%)",
+          }}
+        />
+        <div
+          className="aurora-blob top-[22rem] left-[30%] w-[30rem] h-[30rem]"
+          style={{
+            ["--aurora-dur" as string]: "32s",
+            animationDelay: "-14s",
+            background:
+              "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 6%, transparent), transparent 70%)",
           }}
         />
       </div>

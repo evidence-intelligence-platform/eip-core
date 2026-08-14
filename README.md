@@ -1,3 +1,7 @@
+<div align="center">
+<img src=".github/assets/banner.svg" alt="eip-core — Evidence Intelligence Platform" width="100%">
+</div>
+
 # EIP Core Repository (`eip-core`)
 
 This repository contains the full platform implementation for the **Evidence Intelligence Platform (EIP)**, comprising the Isolated Intelligence Zone AI Engine and the Next.js Web Frontend.
@@ -10,6 +14,14 @@ This repository contains the full platform implementation for the **Evidence Int
 eip-core/
 ├── ai-engine/      # Python 3.11 / FastAPI — Isolated Intelligence Zone
 └── frontend/       # Next.js 15 / TypeScript — Public Web Interface
+```
+
+```mermaid
+flowchart LR
+  U[Browser] --> FE[frontend — Next.js 15 · :3000]
+  FE --> API[ai-engine — FastAPI · :8080]
+  API --> DB[(SQL persistence)]
+  API --> EX[PDF parsing + deterministic evidence extraction]
 ```
 
 ### 1. AI Engine (`/ai-engine`)

@@ -6,6 +6,8 @@
 
 This repository contains the full platform implementation for the **Evidence Intelligence Platform (EIP)**, comprising the Isolated Intelligence Zone AI Engine and the Next.js Web Frontend.
 
+**What does it do?** EIP is an evidence-based hiring platform: a candidate uploads a resume (with explicit consent), the AI engine extracts *verifiable evidence* from it deterministically, and an employer sees an **explainability report** — which claims are backed by evidence, at what percentage, and why — instead of a black-box score. Employers post job requirements and accept/decline applications from a live dashboard; every AI inference is gated behind consent and an internal Zero Trust API boundary.
+
 ---
 
 ## 🏗️ Repository Architecture

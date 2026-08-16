@@ -43,8 +43,40 @@ the "Isolated Intelligence Zone" design in `eif-core-docs`.
   | `RESEND_API_KEY` | optional — from https://resend.com; without it e-mails are logged, not sent |
   | `EMAIL_FROM` | optional — verified sender, e.g. `EIP <no-reply@yourdomain.com>` |
   | `SENTRY_DSN` | optional — Python/FastAPI project DSN from https://sentry.io; empty = disabled |
+  | `UPLOAD_DIR` | **required** — `/data/uploads`, i.e. a path *inside* the volume from §2.1 |
 
   Migrations run automatically on boot (Dockerfile CMD).
+
+### 2.1 Persistent storage for uploaded evidence (required)
+
+Uploaded documents — photographed certificates, scanned diplomas, driving
+licences — are written to disk and their `Evidence` row starts as
+`review_status = "pending"` until an admin looks at the file. Railway
+containers have an **ephemeral filesystem**: without a volume, every redeploy
+(including one triggered by a routine `git push`) deletes exactly those
+pending documents, while the `media_path` column survives in Postgres. The
+loss then surfaces days later as evidence an admin cannot open — and the
+platform's "a human reviewed this" guarantee is what silently breaks.
+
+1. ai-engine service → **Settings → Volumes → New Volume**
+2. **Mount path**: `/data`
+3. **Variables**: `UPLOAD_DIR = /data/uploads` (a subdirectory of the mount —
+   the engine creates it at startup)
+4. Redeploy, then check the deploy log for `Kanıt deposu hazır: /data/uploads`.
+
+The engine logs a warning at startup when `UPLOAD_DIR` is unset, and an error
+when the directory it names cannot be written to. Do not ignore either line;
+both mean uploads are being lost or refused. Where files were already lost,
+the moderation panel answers `409` to an approval whose document it cannot
+open — an admin can still reject those rows, but nothing may be approved
+unseen.
+
+Notes:
+- A Railway volume attaches to **one** service and pins it to a single
+  replica. Scaling the engine horizontally requires moving blobs to object
+  storage (S3/R2) first.
+- Changing `UPLOAD_DIR` later does **not** move existing files. Copy them
+  across before switching, or already-approved evidence becomes unviewable.
 
 ## 3. Service: frontend
 
@@ -67,6 +99,25 @@ the "Isolated Intelligence Zone" design in `eif-core-docs`.
 1. Open the frontend's public domain → `/candidates` should render.
 2. The engine must NOT be reachable publicly (it has no domain).
 3. Check ai-engine deploy logs for `[MIGRATE]` / `[SUCCESS]` lines.
+4. Storage survives a redeploy: upload a document, confirm it appears in
+   `/admin/moderation` and opens, redeploy the engine, then open it again.
+   If it 404s afterwards, the volume from §2.1 is missing or `UPLOAD_DIR`
+   points outside it.
+
+## 5. Backups — what is and is not covered
+
+`.github/workflows/backup.yml` runs a nightly `pg_dump` to Cloudflare R2.
+That backup covers **Postgres only**.
+
+**Uploaded evidence files are NOT backed up.** They exist in exactly one
+place: the volume from §2.1. Deleting that volume, or losing it, destroys
+every stored diploma, certificate and licence permanently — the database
+keeps the `media_path` rows pointing at files that no longer exist, so the
+damage is invisible until an admin opens the moderation queue.
+
+Until file-level backups exist (object storage with versioning is the
+intended fix), treat the uploads volume as unrecoverable data: never detach
+or recreate it as part of a routine deploy.
 
 ## Local development
 

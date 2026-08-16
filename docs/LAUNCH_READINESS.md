@@ -27,6 +27,55 @@
 
 ---
 
+> ## Güncelleme — 15 Ağustos 2026
+>
+> Bu güncelleme, iddiaları kaynağından doğrulamak için yapılan bir belge denetiminden
+> çıktı. Önceki iki güncelleme **kodun yazılmış olmasını** "hazır" saydı; aşağıdaki
+> iki kalem, kodun yazılmış ama **hiç çalışmamış** olduğunu gösteriyor. Aradaki fark,
+> gerçek kullanıcı verisi alındıktan sonra telafi edilemez.
+>
+> ### Doğrulanan iki geçersiz iddia
+>
+> | # | Kriter | Belgede yazan | 15 Ağustos'ta ölçülen |
+> |---|---|---|---|
+> | 10 | CI/CD | ✅ Hazır — "push/PR tetiklemeli" | 🔴 **Hiç çalışmadı.** GitHub Actions API'sine göre `ci.yml` (22 Temmuz'da kayıtlı) ve `backup.yml` (10 Ağustos'ta kayıtlı) için **toplam çalışma sayısı: 0**. Depodaki 67 commit'in tamamı uzak sunucuda (`origin/main` = yerel `HEAD`), yani tetikleyici olay defalarca gerçekleşti |
+> | 12 | Veritabanı yedekleme | ✅ "günlük dış yedek eklendi" | 🔴 **Prodüksiyonun sıfır yedeği var.** Workflow hiç çalışmadı; ayrıca depoda **hiç Actions secret'ı tanımlı değil** (`DATABASE_URL`, `R2_*` dahil), dolayısıyla `backup.yml` ilk adımı olan "Check the job is configured" aşamasında kasıtlı olarak duracak şekilde yapılandırılmış durumda |
+>
+> **Ölçüm yöntemi:** `gh api repos/evidence-intelligence-platform/eip-core/actions/workflows/{ci.yml,backup.yml}/runs` → `total_count: 0`;
+> `.../actions/secrets` → `total_count: 0`; `.../actions/permissions` → `enabled: true`, `allowed_actions: "all"`.
+> `eif-core-docs` deposundaki `docs-ci.yml` için de toplam çalışma sayısı 0.
+>
+> ### Neden çalışmadığı — bilinen ve bilinmeyen
+>
+> Depo seviyesinde Actions **açık**, her iki workflow **`active`** durumda ve commit'ler
+> uzak depoda. Yani engel, depo ayarlarının içinde değil. Geriye organizasyon seviyesindeki
+> Actions politikası kalıyor; bu ayar org yöneticisi olmadan okunamadığı için burada
+> **tahmin olarak değil, kontrol edilecek ilk yer olarak** kaydediliyor.
+>
+> **Erol'un yapması gerekenler (sırayla):**
+> 1. `github.com/organizations/evidence-intelligence-platform/settings/actions` → Actions'ın org genelinde izinli olduğunu doğrula.
+> 2. `ci.yml`'i **Run workflow** ile elle tetikle; yeşil gördükten sonra `main` üzerinde branch protection'a bağla. Çalışmayan bir CI, olmayan bir CI'dır — testlerin yerelde yeşil olması bunu değiştirmez.
+> 3. Beş secret'ı gir (`DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`), `backup.yml`'i elle çalıştır ve **üretilen arşivi indirip geri yükleyerek doğrula**. Denenmemiş yedek, yedek sayılmaz.
+>
+> ### Yeniden değerlendirilen özet
+>
+> 6 Ağustos'un "🔴 kalan 7 adım" listesinden **6. madde (otomatik veritabanı yedekleme) kapanmadı** — kodu yazıldı, ama hiç çalışmadı. 10 Ağustos güncellemesinin o satırı bu nedenle geçersizdir.
+> Buna **CI'ın hiç çalışmamış olması** eklenince, lansman öncesi kapatılması gereken kalem sayısı **2**'dir ve ikisi de yarım saatlik ayar işidir — kod değişikliği gerektirmez.
+>
+> ### Aynı denetimde düzeltilen belge borcu
+>
+> Bunlar lansman engelleyicisi değil, ama yönetişim belgelerinin gerçeğe uygunluğu
+> KVKK/VERBİS beyanlarının dayanağı olduğu için burada kayda geçiyor:
+>
+> - `08_SECURITY_ARCHITECTURE.md`, motorda kişisel veri **bulunmadığını** iddia ediyordu (`No PII in AI Engine ✅ DONE`). Yanlıştı: motor e-posta, ad, **vergi/T.C. kimlik numarası**, IP adresi ve yüklenen belgelerin kendisini saklıyor, ayrıca özgeçmiş metnini Gemini'ye aktarıyor. Satır düzeltildi ve gerçek envanter §6.1 olarak yazıldı.
+> - `06_API_CONTRACTS.md` hiç yazılmamış uçları tarif ediyordu; canlı `/openapi.json` çıktısından yeniden üretildi.
+> - `05_DATABASE_SCHEMA.md` uuid PK'lı, trigger'lı bir şema anlatıyordu; gerçek 13 tablo ve int PK'lar yazıldı.
+> - `ADR.md`'ye 22 Temmuz sonrası alınan yedi karar ADR-007…013 olarak eklendi.
+> - Sürüm iddiaları düzeltildi: Next.js **16.2.10** / React **19.2.4** (belgelerde Next.js 15 yazıyordu).
+> - `ai-engine/.env.example` oluşturuldu — README'nin `cd ai-engine && cp .env.example .env` komutu dosya bir üst dizinde olduğu için hata veriyordu.
+
+---
+
 ## 1. Yönetici Özeti
 
 Ürünün çekirdeği sağlam ve **halihazırda Railway üzerinde canlıda**: kimlik doğrulama, zero-trust servis mimarisi, upload doğrulama, rate limiting, CI/CD ve deploy altyapısı üretim kalitesinde; UGC moderasyon katmanı da bugün ekleniyor. Buna karşılık bir SaaS'ı "lansmana hazır" yapan operasyonel katman — e-posta, şifre sıfırlama, hata takibi, otomatik yedekleme, kullanım şartları ve KVKK sayfasında vaat edilen hesap silme akışı — henüz yok. **Kalan lansman engelleyici adım sayısı: 7.** Bunların hepsi S/M eforlu işlerdir; odaklı çalışmayla iki haftada kapatılabilir.

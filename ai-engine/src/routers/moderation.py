@@ -1,9 +1,11 @@
 """
 EIF: Evidence Moderation Router (Admin Only)
 ---
-Version: 1.0.0
+Version: 1.1.0
 Owner: EIF Architecture Team
-Compliance: 06_API_CONTRACTS.md — moderation layer
+Compliance: 06_API_CONTRACTS.md — moderation layer;
+01_ENGINEERING_CONSTITUTION.md Article II — an approval asserts that a human
+actually examined the document.
 ---
 Uploaded images and scanned PDFs enter the pipeline as review_status
 "pending"; these endpoints are where a human accepts or rejects them.
@@ -23,7 +25,7 @@ from src.db.models import Evidence
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_admin
 from src.services.audit import record_audit
-from src.services.storage import load_upload
+from src.services.storage import load_upload, upload_exists
 
 router = APIRouter(
     prefix="/api/v1/moderation",
@@ -60,6 +62,14 @@ class ReviewDecision(BaseModel):
     # Literal, not str: an unknown verdict must be a 422, never a silent write.
     review_status: Literal["approved", "rejected"]
     note: str | None = Field(default=None, max_length=2000)
+
+
+# Shown to the admin when the document behind a row can no longer be opened.
+MEDIA_UNAVAILABLE_DETAIL = (
+    "Bu kanıtın belgesi sunucuda bulunamadı; görülemeyen bir belge "
+    "onaylanamaz. Kaydı reddedebilir veya adaydan belgeyi yeniden "
+    "yüklemesini isteyebilirsiniz."
+)
 
 
 def _to_item(evidence: Evidence) -> ModerationItem:
@@ -118,10 +128,34 @@ def review_evidence(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_admin),
 ) -> ModerationItem:
-    """Records the admin's verdict, along with who decided and when."""
+    """
+    Records the admin's verdict, along with who decided and when.
+
+    Approving is refused while the stored document cannot be opened: the
+    verdict — and the AuditTrail row beside it — asserts that a human examined
+    that file, and the panel's own media endpoint answers 404 for it, so the
+    approval could only ever be blind. This is not hypothetical; every upload
+    written to a non-persistent UPLOAD_DIR ends up exactly here after a
+    redeploy (see src/services/storage.py), and "pending" is precisely the set
+    that gets lost. Rejecting stays open — a record whose file is gone is
+    legitimately rejectable, and blocking that would strand the queue.
+    """
     evidence = session.get(Evidence, evidence_id)
     if not evidence:
         raise HTTPException(status_code=404, detail="Evidence not found")
+
+    # media_path is NULL for text extractions, which carry no document to look
+    # at and are stored already approved; only rows that claim a file must
+    # still have one. Checked before anything is written to the session, so a
+    # refused approval leaves neither an Evidence update nor an audit row.
+    if (
+        decision.review_status == "approved"
+        and evidence.media_path is not None
+        and not upload_exists(evidence.media_path)
+    ):
+        # 409, not 404: the row exists and the caller may review it — the
+        # server's state is what makes this particular verdict impossible.
+        raise HTTPException(status_code=409, detail=MEDIA_UNAVAILABLE_DETAIL)
 
     evidence.review_status = decision.review_status
     evidence.reviewed_by = user.get("sub")

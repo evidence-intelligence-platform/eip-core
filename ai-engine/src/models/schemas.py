@@ -1,7 +1,7 @@
 """
 EIF: Pydantic Schemas for the Isolated Intelligence Zone
 ---
-Version: 1.2.0
+Version: 1.3.0
 Owner: EIF Architecture Team
 Compliance:
   - 01_ENGINEERING_CONSTITUTION.md Article II, Section 1: Consent as Prerequisite
@@ -171,6 +171,29 @@ class ExtractionResult(BaseModel):
             "Required when status is VERIFIED or CONTRADICTION."
         )
     )
+
+    @model_validator(mode='after')
+    def enforce_evidence_pointer(self) -> 'ExtractionResult':
+        """
+        THE EVIDENCE GATE.
+        A verdict about a person that nobody can trace back to a source is the
+        exact thing this platform exists to refuse, so an unsupported VERIFIED
+        or CONTRADICTION is rejected here instead of being persisted as an
+        audit-trail row that cannot be audited. INSUFFICIENT EVIDENCE is the
+        honest answer when there is nothing to point at, and it alone may leave
+        the pointer empty.
+        Compliance: AI_AGENT_RULES.md Rule 2.
+        """
+        # A whitespace-only pointer is not evidence — it merely satisfies a
+        # `is not None` check, which is how an empty claim would slip through.
+        if self.status in ("VERIFIED", "CONTRADICTION") and not (self.evidence_pointer or "").strip():
+            raise ValueError(
+                f"EVIDENCE POINTER VIOLATION: '{self.status}' sonucu kanıt gösterilmeden "
+                "verilemez. evidence_pointer alanı zorunludur; kanıta işaret edilemiyorsa "
+                "doğru sonuç 'INSUFFICIENT EVIDENCE'tır. "
+                "Ref: AI_AGENT_RULES.md Rule 2."
+            )
+        return self
 
 
 class FileExtractionResult(ExtractionResult):

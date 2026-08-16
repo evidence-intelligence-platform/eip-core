@@ -1,23 +1,36 @@
 """
 EIF: LLM Evidence Extractor — Behavioral Tests
 ---
-Version: 1.1.0
+Version: 1.2.0
 Owner: EIF Architecture Team
 Compliance: 01_ENGINEERING_CONSTITUTION.md Article III, Section 1:
   "Any AI extraction logic must have deterministic unit tests evaluating its output format."
 ---
-Audit Fix (2026-07-22): Added consent_verified=True to all EvidencePayload instances.
-  The consent gate now enforces consent at the schema level. Tests must comply.
----
-NOTE: These tests require a valid GEMINI_API_KEY and make live API calls.
-  They are INTEGRATION tests, not unit tests. They validate that the LLM
-  follows the EIF rules (no psychoanalysis, no guessing, correct schema output).
-  To run: python -m pytest tests/test_extractor.py -v
+NOTE: The async tests below are INTEGRATION tests, not unit tests: they need a
+  real GEMINI_API_KEY and make live API calls to check that the model obeys the
+  EIF rules (no psychoanalysis, no guessing, correct schema output).
+
+  Without a key they SKIP — loudly. conftest.py installs a placeholder key so
+  the app can boot, so a test that merely returned early here would report
+  PASSED without having verified anything, and the suite would claim coverage
+  of the extraction contract it never exercised. Skips are visible in the CI
+  summary; silent passes are not. The provider-independent half of that
+  contract is locked down offline in test_llm_contract.py.
+
+  To run against the live model: GEMINI_API_KEY=<key> python -m pytest tests/test_extractor.py -v
 """
 
 import pytest
 
 from src.models.schemas import EvidencePayload, ExtractRequest, Requirement
+
+# The placeholder conftest.py sets when no real key is present. Treated as
+# "no key" — GeminiLLMService constructs fine with it, then fails at call time.
+_PLACEHOLDER_KEY = "test-placeholder-key-not-used-in-unit-tests"
+
+_SKIP_REASON = (
+    "GEMINI_API_KEY tanımlı değil: canlı LLM entegrasyon testi çalıştırılamıyor."
+)
 
 
 @pytest.fixture
@@ -25,19 +38,19 @@ def anyio_backend():
     return 'asyncio'
 
 
-
 def _get_llm():
-    """Helper to initialize LLM service, skipping tests if API key not set."""
+    """Returns a live LLM service, or skips the calling test when no key is set."""
     import os
 
     from src.services.llm_service import GeminiLLMService
+
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key or api_key == "test-placeholder-key-not-used-in-unit-tests":
-        return None
+    if not api_key or api_key == _PLACEHOLDER_KEY:
+        pytest.skip(_SKIP_REASON)
     try:
         return GeminiLLMService()
-    except ValueError:
-        return None
+    except ValueError as e:
+        pytest.skip(f"{_SKIP_REASON} ({e})")
 
 
 @pytest.mark.anyio
@@ -47,16 +60,13 @@ async def test_react_context_verification():
     Evidence: Raw code using React useContext() hook directly.
     """
     llm = _get_llm()
-    if not llm:
-        print("⚠️  SKIPPED test_react_context_verification: GEMINI_API_KEY not set.")
-        return
 
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",
             source_type="GITHUB",
             raw_data="import React, { useContext } from 'react'; const auth = useContext(AuthContext);",
-            consent_verified=True,  # AUDIT FIX: consent_verified required
+            consent_verified=True,
         ),
         requirement=Requirement(id="req_1", description="Must know React state management")
     )
@@ -64,7 +74,6 @@ async def test_react_context_verification():
     assert res.status == "VERIFIED", f"Expected VERIFIED, got: {res.status}"
     assert res.evidence_pointer is not None, "Evidence pointer must not be None for VERIFIED status."
     assert len(res.reasoning) >= 10, "Reasoning must not be empty."
-    print("✅ TEST PASSED: React Context verified with evidence.")
 
 
 @pytest.mark.anyio
@@ -74,22 +83,18 @@ async def test_insufficient_evidence():
     Evidence: A hello world print statement, completely unrelated to React.
     """
     llm = _get_llm()
-    if not llm:
-        print("⚠️  SKIPPED test_insufficient_evidence: GEMINI_API_KEY not set.")
-        return
 
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",
             source_type="GITHUB",
             raw_data="print('hello world')",
-            consent_verified=True,  # AUDIT FIX: consent_verified required
+            consent_verified=True,
         ),
         requirement=Requirement(id="req_2", description="Must know React state management")
     )
     res = await llm.extract_evidence(req)
     assert res.status == "INSUFFICIENT EVIDENCE", f"Expected INSUFFICIENT EVIDENCE, got: {res.status}"
-    print("✅ TEST PASSED: Refused to guess on missing evidence.")
 
 
 @pytest.mark.anyio
@@ -99,16 +104,13 @@ async def test_no_psychoanalysis_on_leadership():
     "Leadership" must be proven by tangible professional interactions, not self-claims.
     """
     llm = _get_llm()
-    if not llm:
-        print("⚠️  SKIPPED test_no_psychoanalysis_on_leadership: GEMINI_API_KEY not set.")
-        return
 
     req = ExtractRequest(
         payload=EvidencePayload(
             candidate_id="cand_123",
             source_type="CHATGPT",
             raw_data="I am a very good leader and people love me.",
-            consent_verified=True,  # AUDIT FIX: consent_verified required
+            consent_verified=True,
         ),
         requirement=Requirement(id="req_3", description="Leadership skills")
     )
@@ -117,7 +119,6 @@ async def test_no_psychoanalysis_on_leadership():
         f"Expected INSUFFICIENT EVIDENCE for a self-declaration, got: {res.status}. "
         f"Reasoning: {res.reasoning}"
     )
-    print("✅ TEST PASSED: Refused to accept non-tangible psychological claims of leadership.")
 
 
 def test_consent_gate_rejection():
@@ -127,23 +128,12 @@ def test_consent_gate_rejection():
     This test does NOT require a live API key — it tests the schema validator.
     """
     from pydantic import ValidationError
-    try:
+
+    with pytest.raises(ValidationError) as exc_info:
         EvidencePayload(
             candidate_id="cand_no_consent",
             source_type="GITHUB",
             raw_data="some code",
-            consent_verified=False,  # Should be rejected
+            consent_verified=False,
         )
-        assert False, "CONSENT GATE FAILED: EvidencePayload accepted consent_verified=False!"
-    except ValidationError as e:
-        assert "CONSENT GATE VIOLATION" in str(e), f"Wrong error message: {e}"
-        print("✅ TEST PASSED: Consent gate correctly rejected consent_verified=False.")
-
-
-if __name__ == "__main__":
-    print("Running EIP Evidence Extractor Tests...\n")
-    test_consent_gate_rejection()
-    test_react_context_verification()
-    test_insufficient_evidence()
-    test_no_psychoanalysis_on_leadership()
-    print("\n✅ All tests completed.")
+    assert "CONSENT GATE VIOLATION" in str(exc_info.value)

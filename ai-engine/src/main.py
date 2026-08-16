@@ -19,17 +19,19 @@ AUDIT FIXES (2026-07-22):
     before any deployment.
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
 from sqlmodel import Session
 
 from src.db.database import create_db_and_tables, get_session
@@ -44,7 +46,7 @@ from src.models.schemas import (
 from src.models.schemas import Requirement as SchemaRequirement
 from src.rate_limit import client_ip as _client_ip
 from src.rate_limit import limiter
-from src.routers import applications, auth, candidates, jobs, moderation, requirements
+from src.routers import applications, auth, candidates, jobs, moderation, reports, requirements
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_user
 from src.services.audit import record_consent
@@ -111,6 +113,10 @@ tags_metadata = [
     {
         "name": "requirements",
         "description": "Evaluation criteria & requirements definitions.",
+    },
+    {
+        "name": "reports",
+        "description": "Server-computed explainability reports: the evidence matrix behind an application's match score.",
     },
 ]
 
@@ -188,6 +194,7 @@ app.include_router(applications.router)
 app.include_router(candidates.router)
 app.include_router(requirements.router)
 app.include_router(moderation.router)
+app.include_router(reports.router)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM Service Initialization
@@ -540,10 +547,44 @@ async def extract_evidence_from_file(
     summary="Health check",
     tags=["system"],
 )
-async def health_check():
-    """Public health check endpoint. No authentication required."""
+def health_check(session: Session = Depends(get_session)):
+    """
+    Public health check endpoint. No authentication required.
+
+    This is the probe the platform routes traffic on, so answering from process
+    memory alone was worse than useless: an instance that could not reach the
+    database — wrong DATABASE_URL, exhausted connection pool, database still
+    booting — reported "healthy" and was handed live users, who then met 500s
+    on every request. One trivial query decides it now.
+
+    The 200 body keeps its original three fields verbatim; monitoring may be
+    matching on them. `database` is additive.
+
+    Defined with `def` rather than `async def` so the blocking round-trip runs
+    in the threadpool instead of stalling the event loop for every other
+    request in flight.
+    """
+    zone = "Isolated Intelligence Zone"
+    version = "1.2.0"
+    try:
+        session.execute(text("SELECT 1"))
+    except Exception:
+        # The driver's message carries the connection string, and this endpoint
+        # is public: the reason goes to the logs, never into the response.
+        logging.getLogger("eip.health").exception("Health probe could not reach the database")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "zone": zone,
+                "version": version,
+                "database": "down",
+            },
+        )
+
     return {
         "status": "healthy",
-        "zone": "Isolated Intelligence Zone",
-        "version": "1.2.0",
+        "zone": zone,
+        "version": version,
+        "database": "up",
     }

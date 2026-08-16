@@ -115,6 +115,50 @@ export interface ReportData {
   };
 }
 
+/** Human review verdict the engine attaches to every report row. */
+export type ReportReviewStatus = "pending" | "approved" | "rejected";
+
+export interface ApplicationReportItem {
+  requirement_external_id: string;
+  requirement_description: string | null;
+  status: "VERIFIED" | "INSUFFICIENT EVIDENCE" | "CONTRADICTION" | string;
+  confidence_score: number | null;
+  reasoning: string;
+  evidence_pointer: string | null;
+  review_status: ReportReviewStatus | string;
+  /**
+   * Whether the engine put this row in the score denominator. Employers are
+   * served approved rows only; the owning candidate and admins also receive
+   * pending/rejected ones, which arrive with counted=false so both audiences
+   * read the same percentage off the same document.
+   */
+  counted: boolean;
+}
+
+/**
+ * One application's explainability report, exactly as the engine composed it.
+ * `evidence_score` is authoritative: the score is decided where the visibility
+ * rules live, so a viewer can never be shown a percentage derived from the
+ * subset of rows their role happens to receive.
+ */
+export interface ApplicationReport {
+  application_id: number;
+  job_id: number;
+  job_title: string;
+  company_name: string;
+  candidate_external_id: string;
+  candidate_name: string | null;
+  application_status: string;
+  /** ISO 8601. */
+  generated_at: string;
+  /** 0-100, computed server-side. */
+  evidence_score: number;
+  verified_count: number;
+  /** Rows that entered the score denominator. */
+  counted_count: number;
+  items: ApplicationReportItem[];
+}
+
 /**
  * The engine now authenticates the *user*, not just the proxy, so every
  * call needs the token. AuthContext keeps this in sync with localStorage
@@ -651,6 +695,12 @@ export function summarizeEvidences(evidences: Evidence[]): ReportData["summary"]
   return { total, verified, insufficient, contradictions, score };
 }
 
+/**
+ * Candidate-profile aggregate: the person plus every evidence row held for
+ * them, tallied here. This is a view of the *person*, which is why
+ * /candidates/[id] still uses it. Application reports no longer work this way —
+ * see getApplicationReport.
+ */
 export async function getReportData(candidateId: string): Promise<ReportData> {
   // The single-candidate endpoint answers the candidate the record is about
   // and the employers who evaluate applicants, so both can open this report.
@@ -670,4 +720,55 @@ export async function getReportData(candidateId: string): Promise<ReportData> {
     evidences,
     summary: summarizeEvidences(evidences),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Application report API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reports are keyed by application, not by candidate: one person applying to
+ * two postings must get two reports, judged against two sets of requirements.
+ * Links minted while the report was candidate-keyed carry an external id like
+ * "cand_a1b2" and can never resolve here, so name the problem instead of
+ * forwarding a request the engine can only answer with a 404.
+ */
+function toApplicationIdPath(applicationId: number | string): string {
+  const raw = String(applicationId).trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new ApiError(
+      "Bu rapor bağlantısı geçersiz. Raporlar başvuru numarasına göre açılır; lütfen başvuru listesinden yeniden açın.",
+      404
+    );
+  }
+  return raw;
+}
+
+/**
+ * Fetches one application's report in a single call. The engine decides both
+ * what the caller may see and what the score is; nothing here recomputes it.
+ */
+export async function getApplicationReport(
+  applicationId: number | string
+): Promise<ApplicationReport> {
+  const res = await fetch(`${API_URL}/reports/${toApplicationIdPath(applicationId)}`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+
+  if (res.ok) return res.json();
+
+  // The generic status texts ("Bu işlem için yetkiniz yok.") leave the reader
+  // guessing what was refused. A report link is usually reached from a list, so
+  // say which door is closed and who it opens for.
+  if (res.status === 403) {
+    throw new ApiError(
+      "Bu raporu görüntüleme yetkiniz yok. Rapor yalnızca başvuruyu yapan adaya ve ilanı yayınlayan işverene açıktır.",
+      403
+    );
+  }
+  if (res.status === 404) {
+    throw new ApiError("Bu başvuruya ait bir rapor bulunamadı.", 404);
+  }
+  throw await toApiError(res, "Rapor yüklenemedi.");
 }

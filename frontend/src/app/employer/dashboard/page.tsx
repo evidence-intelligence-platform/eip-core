@@ -371,9 +371,12 @@ export default function EmployerDashboard() {
                         <span className="text-fg-soft font-medium truncate">
                           {app.candidate_name || `Aday #${app.candidate_id}`}
                         </span>
-                        {app.candidate_external_id ? (
+                        {/* The report belongs to the application, not the person:
+                            linking by candidate showed the same document for
+                            every posting the same applicant had applied to. */}
+                        {app.id !== undefined ? (
                           <Link
-                            href={`/reports/${app.candidate_external_id}`}
+                            href={`/reports/${app.id}`}
                             className="text-brand hover:text-brand-strong hover:underline font-semibold shrink-0 transition-colors"
                           >
                             Raporu incele &rarr;

@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import { getReportData, ReportData } from "@/lib/api";
+import { getApplicationReport, ApplicationReport } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 // Human review outcome. Only the owning candidate (and admins) receive
@@ -66,11 +65,20 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export default function ReportPage() {
-  const params = useParams();
-  const candidateId = params.id as string;
+/** Document stamp. A malformed timestamp yields no stamp rather than "Invalid Date". */
+function formatGeneratedAt(iso: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+}
+
+export default function ReportPage({ params }: { params: Promise<{ id: string }> }) {
+  // The route segment is the application id: the same person applying to two
+  // postings is judged against two sets of requirements, so keying the report
+  // on the candidate handed both applications the same document.
+  const applicationId = use(params).id;
   const { loading: authLoading } = useAuth();
-  const [report, setReport] = useState<ReportData | null>(null);
+  const [report, setReport] = useState<ApplicationReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,7 +86,7 @@ export default function ReportPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getReportData(candidateId);
+      const data = await getApplicationReport(applicationId);
       setReport(data);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -96,22 +104,44 @@ export default function ReportPage() {
     // runs *after* this one; fetching while it is still loading would fire
     // the request without an Authorization header and 401.
     if (authLoading) return;
-    if (candidateId) {
+    if (applicationId) {
       fetchReport();
     }
-  }, [authLoading, candidateId]);
+  }, [authLoading, applicationId]);
+
+  // The engine already decided the score and its denominator; these tallies
+  // only break that same denominator down by outcome, so the three numbers
+  // under the ring always add up to what the ring shows.
+  const countedItems = report?.items.filter((item) => item.counted) ?? [];
+  const insufficientCount = countedItems.filter(
+    (item) => item.status === "INSUFFICIENT EVIDENCE"
+  ).length;
+  const contradictionCount = countedItems.filter(
+    (item) => item.status === "CONTRADICTION"
+  ).length;
+  const candidateName = report?.candidate_name?.trim() || "Aday";
+  const generatedAt = report ? formatGeneratedAt(report.generated_at) : null;
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8">
       {/* Top Navigation */}
       <div className="flex items-center justify-between gap-3 border-b border-line pb-4">
-        <Link
-          href={`/candidates/${candidateId}`}
-          className="text-xs font-semibold text-fg-mute hover:text-fg transition-colors"
-        >
-          &larr; Aday Profiline Dön
-        </Link>
-        <span className="text-xs font-mono text-fg-mute">RAPOR NO: EXP-{candidateId}</span>
+        {report ? (
+          <Link
+            href={`/candidates/${report.candidate_external_id}`}
+            className="text-xs font-semibold text-fg-mute hover:text-fg transition-colors"
+          >
+            &larr; Aday Profiline Dön
+          </Link>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <div className="text-right">
+          <span className="block text-xs font-mono text-fg-mute">RAPOR NO: EXP-{applicationId}</span>
+          {generatedAt && (
+            <span className="block text-[11px] text-fg-mute">Hazırlanma: {generatedAt}</span>
+          )}
+        </div>
       </div>
 
       {/* Header Title */}
@@ -120,10 +150,20 @@ export default function ReportPage() {
         <h1 className="text-title text-fg">
           Aday Uyum ve Gerekçe Raporu
         </h1>
-        <p className="text-fg-soft text-sm">
-          Aday: <span className="font-semibold text-fg">{report?.candidate?.name || candidateId}</span>{" "}
-          (Kayıt: <span className="font-mono text-fg-soft">{candidateId}</span>)
-        </p>
+        {report ? (
+          <div className="space-y-1">
+            <p className="text-fg-soft text-sm">
+              Aday: <span className="font-semibold text-fg">{candidateName}</span>{" "}
+              (Kayıt: <span className="font-mono text-fg-soft">{report.candidate_external_id}</span>)
+            </p>
+            <p className="text-fg-mute text-xs">
+              İlan: <span className="font-medium text-fg-soft">{report.job_title}</span> &middot;{" "}
+              {report.company_name}
+            </p>
+          </div>
+        ) : (
+          <p className="text-fg-soft text-sm tabular-nums">Başvuru #{applicationId}</p>
+        )}
       </div>
 
       {loading ? (
@@ -131,9 +171,9 @@ export default function ReportPage() {
           <div className="w-10 h-10 mx-auto border-4 border-brand/25 border-t-brand rounded-full animate-spin" aria-hidden="true" />
           <p className="text-fg-soft text-sm">Rapor hazırlanıyor; değerlendirme sonuçları derleniyor…</p>
         </div>
-      ) : error ? (
+      ) : error || !report ? (
         <div role="alert" className="p-6 bg-err/10 border border-err/30 text-err rounded-md text-sm text-center">
-          {error}
+          {error ?? "Rapor yüklenemedi."}
         </div>
       ) : (
         <>
@@ -141,25 +181,25 @@ export default function ReportPage() {
           <div className="card grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
             <div className="flex flex-col items-center justify-center p-4 border-b md:border-b-0 md:border-r border-line space-y-3">
               <span className="text-xs font-semibold text-fg-mute uppercase tracking-wider text-center text-balance">Belgeyle Doğrulanmış Uyum Oranı</span>
-              <ScoreRing score={report?.summary.score ?? 0} />
+              <ScoreRing score={report.evidence_score} />
               <span className="text-xs text-fg-mute tabular-nums">
-                {report?.summary.verified} / {report?.summary.total} gereksinim belgeyle doğrulandı
+                {report.verified_count} / {report.counted_count} gereksinim belgeyle doğrulandı
               </span>
             </div>
 
             <div className="col-span-2 space-y-3 flex flex-col justify-center">
               <h3 className="text-sm font-semibold text-fg-soft uppercase tracking-wider">Özet Değerlendirme</h3>
               <p className="text-sm text-fg-soft leading-relaxed">
-                {report?.summary.score && report.summary.score >= 50
-                  ? `${report.candidate.name}, ilanın temel gereksinimleri için doğrulanabilir belge sundu. Değerlendirme yalnızca sunulan kanıtlara dayanmaktadır.`
-                  : report?.summary.total === 0
-                  ? `Bu aday için henüz belge değerlendirmesi yapılmadı. Aday panelinden özgeçmiş, sertifika veya belge yüklenebilir.`
-                  : `${report?.candidate.name} için bazı gereksinimlerde belge yetersiz kaldı veya doğrulanamadı. Görüşmede bu başlıkların sorulması önerilir.`}
+                {report.counted_count === 0
+                  ? `Bu başvuru için henüz değerlendirilmiş bir belge bulunmuyor. Aday panelinden özgeçmiş, sertifika veya belge yüklenebilir.`
+                  : report.evidence_score >= 50
+                  ? `${candidateName}, ${report.job_title} ilanının temel gereksinimleri için doğrulanabilir belge sundu. Değerlendirme yalnızca sunulan kanıtlara dayanmaktadır.`
+                  : `${candidateName} için bazı gereksinimlerde belge yetersiz kaldı veya doğrulanamadı. Görüşmede bu başlıkların sorulması önerilir.`}
               </p>
               <div className="flex flex-wrap gap-4 text-xs text-fg-mute pt-1 tabular-nums">
-                <span>Doğrulanan: <strong className="text-ok">{report?.summary.verified}</strong></span>
-                <span>Yetersiz: <strong className="text-warn">{report?.summary.insufficient}</strong></span>
-                <span>Çelişki: <strong className="text-err">{report?.summary.contradictions}</strong></span>
+                <span>Doğrulanan: <strong className="text-ok">{report.verified_count}</strong></span>
+                <span>Yetersiz: <strong className="text-warn">{insufficientCount}</strong></span>
+                <span>Çelişki: <strong className="text-err">{contradictionCount}</strong></span>
               </div>
             </div>
           </div>
@@ -168,9 +208,9 @@ export default function ReportPage() {
           <div className="space-y-6">
             <h2 className="text-lg font-semibold text-fg tracking-tight text-balance">Gereksinim Bazında Değerlendirme</h2>
 
-            {report?.evidences.length === 0 ? (
+            {report.items.length === 0 ? (
               <div className="card p-8 text-center space-y-4">
-                <p className="text-fg-soft text-sm">Bu aday için henüz değerlendirilmiş bir belge bulunmuyor.</p>
+                <p className="text-fg-soft text-sm">Bu başvuru için henüz değerlendirilmiş bir belge bulunmuyor.</p>
                 <Link
                   href="/candidate/hub"
                   className="btn btn-quiet text-xs px-4 py-2"
@@ -181,9 +221,9 @@ export default function ReportPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {report?.evidences.map((e, index) => (
+                {report.items.map((e, index) => (
                   <div
-                    key={e.id || index}
+                    key={`${e.requirement_external_id}-${index}`}
                     className={`card card-lift p-6 space-y-4 border-l-2 ${
                       e.status === "VERIFIED"
                         ? "border-l-ok/60"
@@ -209,7 +249,7 @@ export default function ReportPage() {
                         >
                           {e.status === "VERIFIED" ? "Doğrulandı" : e.status === "CONTRADICTION" ? "Çelişki" : "Yetersiz Belge"}
                         </span>
-                        {e.review_status && REVIEW_BADGES[e.review_status] && (
+                        {REVIEW_BADGES[e.review_status] && (
                           <span
                             className={`badge uppercase tracking-wider ${REVIEW_BADGES[e.review_status].className}`}
                           >
@@ -219,7 +259,14 @@ export default function ReportPage() {
                       </div>
                     </div>
 
-                    {e.review_status && REVIEW_NOTES[e.review_status] && (
+                    {e.requirement_description && (
+                      <p className="text-xs text-fg-mute leading-relaxed">{e.requirement_description}</p>
+                    )}
+
+                    {/* Keyed off `counted` rather than the review verdict alone:
+                        the note claims the row is out of the score, so the
+                        engine's own accounting has to be the one that says so. */}
+                    {!e.counted && REVIEW_NOTES[e.review_status] && (
                       <div className={`text-xs p-3 border rounded-md ${REVIEW_NOTES[e.review_status].className}`}>
                         {REVIEW_NOTES[e.review_status].text}
                       </div>

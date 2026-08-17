@@ -26,9 +26,12 @@ COPY . .
 # Expose FastAPI port (Railway injects PORT; 8080 is the local default)
 EXPOSE 8080
 
-# Health check
+# Health check. /health, not /docs: the docs page is a static Swagger shell
+# that renders even when the database is unreachable, so it reported a dead
+# engine as healthy. It is also the path railway.json probes — one answer to
+# "is this container serving?", not two.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f "http://localhost:${PORT:-8080}/docs" || exit 1
+    CMD curl -f "http://localhost:${PORT:-8080}/health" || exit 1
 
 # Apply migrations, then start Uvicorn. Shell form so ${PORT} expands —
 # Railway (and most PaaS) inject the port at runtime.

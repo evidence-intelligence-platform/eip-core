@@ -1,17 +1,25 @@
 """
 EIF: Transactional E-mail Service
 ---
-Version: 1.0.0
+Version: 1.1.0
 Owner: EIF Architecture Team
-Compliance: 08_SECURITY_ARCHITECTURE.md — operational notifications;
+Compliance: 08_SECURITY_ARCHITECTURE.md — operational notifications, and
+Section 6 "Data Security Rules" (no PII outside the systems that need it);
 LAUNCH_READINESS.md launch blocker #1 (transactional e-mail infrastructure).
 ---
 Provider-agnostic sender. Resend is the wire today (plain HTTPS POST, no SDK
 dependency); swapping providers means changing only _deliver(). When
-RESEND_API_KEY is not configured the service logs the message instead of
-sending it, so every flow that ends in an e-mail (password reset, welcome)
-remains fully testable in development — the reset link appears in the engine
-log rather than an inbox.
+RESEND_API_KEY is not configured the service records that it skipped delivery
+instead of sending, so every flow that ends in an e-mail (password reset,
+welcome) still runs end to end in development.
+
+What that record contains is deliberately thin: never the message body, never
+the action link inside it, never the full recipient address. A password-reset
+body carries a live single-use token, /forgot-password is public and
+unauthenticated, and platform logs are readable by everyone with deployment
+access — so a log line holding that body is an account-takeover primitive for
+any address an attacker cares to name. Developers who want the link back can
+opt in per machine; see _dev_link_logging_enabled().
 
 Design constraints:
   - NEVER raises: a failed e-mail must not fail the request that queued it.
@@ -21,19 +29,24 @@ Design constraints:
     endpoints are sync (run in the threadpool), and background tasks run
     after the response is sent, so a blocking HTTP call here never delays
     a user-facing response.
+  - Logs are an untrusted audience. Every line this module writes must survive
+    the question "what does this hand someone who can read it?" — which is why
+    recipients go through _mask_recipient() on all paths, success included.
 """
 
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
 
 logger = logging.getLogger("eip.email")
 # Under uvicorn's default logging config the root logger has no handler, so
-# everything this module logs would vanish — including the dev-fallback reset
-# link, which is the whole flow when RESEND_API_KEY is unset. Attach a console
-# handler only when nothing upstream is configured to catch us.
+# everything this module logs would vanish and an operator would have no sign
+# that mail was even attempted. Attach a console handler only when nothing
+# upstream is configured to catch us; records still propagate, so an app that
+# configures logging later keeps full control of the output.
 if not logger.handlers and not logging.getLogger().handlers:
     _handler = logging.StreamHandler()
     _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
@@ -47,10 +60,52 @@ RESEND_API_URL = "https://api.resend.com/emails"
 # for real users. Set EMAIL_FROM after the domain is verified in Resend.
 DEFAULT_FROM = "EIP <onboarding@resend.dev>"
 
+DEV_LOG_LINK_ENV = "EMAIL_DEV_LOG_LINK"
+
+# Templates build their call to action as a single anchor, so the first href is
+# the link a developer would otherwise have to dig out of the raw body.
+_ACTION_LINK_PATTERN = re.compile(r'href="([^"]+)"')
+
 
 def is_email_configured() -> bool:
     """True when a real provider key is present (delivery will be attempted)."""
     return bool(os.getenv("RESEND_API_KEY"))
+
+
+def _mask_recipient(address: str) -> str:
+    """
+    Reduces an address to something a log can hold: "aday@example.com" becomes
+    "a***@example.com".
+
+    Enough survives to tell two accounts apart while reading a log; not enough
+    to contact, enumerate or identify the person behind it.
+    """
+    local, separator, domain = address.partition("@")
+    if not separator or not local:
+        # Not a shape we can reason about — say nothing rather than guess.
+        return "***"
+    return f"{local[0]}***@{domain}"
+
+
+def _dev_link_logging_enabled() -> bool:
+    """
+    True only when EMAIL_DEV_LOG_LINK is explicitly set to "true".
+
+    LOCAL DEVELOPMENT ONLY — never turn this on in a live environment. The
+    action link in a password-reset message is the single-use token in
+    plaintext, so with this on, log access equals account takeover. Two locks
+    keep production safe: the variable is off unless explicitly set, and the
+    link is only ever written on the no-provider dev path (see send_email), so
+    a deployment with RESEND_API_KEY set cannot leak the link even if someone
+    sets this by mistake.
+    """
+    return os.getenv(DEV_LOG_LINK_ENV, "false").strip().lower() == "true"
+
+
+def _action_link(html: str) -> str | None:
+    """The message's call-to-action URL, or None for bodies without one."""
+    match = _ACTION_LINK_PATTERN.search(html)
+    return match.group(1) if match else None
 
 
 def send_email(to: str, subject: str, html: str) -> bool:
@@ -58,16 +113,27 @@ def send_email(to: str, subject: str, html: str) -> bool:
     Sends one transactional e-mail. Returns True when the provider accepted
     the message, False otherwise (including the not-configured dev fallback).
 
-    Never raises — see module docstring.
+    Never raises — see module docstring. Nothing it logs identifies the
+    recipient or reveals the message contents.
     """
+    masked_to = _mask_recipient(to)
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
-        # Dev fallback: the flow keeps working end to end; the operator reads
-        # the message (and any action link in it) from the engine log.
+        # Dev fallback: the flow keeps working end to end, but only the fact of
+        # the attempt is recorded — the body would carry a live reset token.
         logger.info(
-            "RESEND_API_KEY yok — e-posta gönderilmedi (dev modu). to=%s subject=%r body:\n%s",
-            to, subject, html,
+            "RESEND_API_KEY yok — e-posta gönderilmedi (dev modu). to=%s subject=%r",
+            masked_to, subject,
         )
+        if _dev_link_logging_enabled():
+            link = _action_link(html)
+            if link:
+                # WARNING, not INFO: a log scraped for anomalies should show
+                # that a machine is running with the secret-leaking switch on.
+                logger.warning(
+                    "%s açık — bağlantı loglanıyor, yalnızca yerel geliştirme: %s",
+                    DEV_LOG_LINK_ENV, link,
+                )
         return False
 
     payload = {
@@ -88,20 +154,26 @@ def send_email(to: str, subject: str, html: str) -> bool:
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             # Resend answers 200 with {"id": ...} on acceptance.
-            logger.info("E-posta gönderildi. to=%s subject=%r status=%s", to, subject, response.status)
+            logger.info(
+                "E-posta gönderildi. to=%s subject=%r status=%s",
+                masked_to, subject, response.status,
+            )
             return True
     except urllib.error.HTTPError as exc:
-        # The response body names the actual problem (unverified domain,
-        # invalid recipient); without it the log only says "422".
+        # Resend's error payload names the actual problem (unverified domain,
+        # rejected recipient); without it the log only says "422". It describes
+        # the request, never echoes the body we posted.
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
         except Exception:
             pass
-        logger.error("E-posta gönderilemedi. to=%s status=%s detail=%s", to, exc.code, detail)
+        logger.error(
+            "E-posta gönderilemedi. to=%s status=%s detail=%s", masked_to, exc.code, detail
+        )
         return False
     except Exception as exc:  # DNS failure, timeout, TLS error…
-        logger.error("E-posta gönderilemedi. to=%s error=%r", to, exc)
+        logger.error("E-posta gönderilemedi. to=%s error=%r", masked_to, exc)
         return False
 
 

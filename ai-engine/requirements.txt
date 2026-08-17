@@ -21,6 +21,10 @@ email-validator>=2.0.0,<3.0.0
 # Google Gemini AI SDK
 google-genai>=1.0.0,<2.0.0
 
+# OpenAI-compatible client — also drives any OpenAI-API-compatible provider
+# (e.g. NVIDIA NIM's integrate.api.nvidia.com) via base_url override.
+openai>=1.50.0,<2.0.0
+
 # Environment Configuration
 python-dotenv>=1.0.1,<2.0.0
 

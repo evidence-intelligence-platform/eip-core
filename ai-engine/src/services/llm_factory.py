@@ -8,9 +8,12 @@ model-provider partnership: pointing the platform at OpenAI or Anthropic
 one-line env change plus an adapter that implements BaseLLMService — no
 business-logic change, per the Foundation Manifest's anti-lock-in rule.
 
-  LLM_PROVIDER=gemini     (default; live today)
-  LLM_PROVIDER=openai     (dormant — add OpenAILLMService + OPENAI_API_KEY)
-  LLM_PROVIDER=anthropic  (dormant — add AnthropicLLMService + ANTHROPIC_API_KEY)
+  LLM_PROVIDER=gemini         (default; live today)
+  LLM_PROVIDER=openai_compat  (live today — any OpenAI-wire-format provider:
+                               NVIDIA NIM, Groq, OpenRouter, a local vLLM
+                               server. See OpenAICompatLLMService.)
+  LLM_PROVIDER=openai         (dormant — add OpenAILLMService + OPENAI_API_KEY)
+  LLM_PROVIDER=anthropic      (dormant — add AnthropicLLMService + ANTHROPIC_API_KEY)
 
 The dormant providers raise a clear, actionable error rather than failing
 obscurely, so switching on a partner is a deliberate, documented step.
@@ -30,6 +33,11 @@ def get_llm_service() -> BaseLLMService:
 
         return GeminiLLMService()
 
+    if provider == "openai_compat":
+        from src.services.openai_compat_llm_service import OpenAICompatLLMService
+
+        return OpenAICompatLLMService()
+
     if provider in ("openai", "anthropic"):
         raise RuntimeError(
             f"LLM_PROVIDER='{provider}' seçildi ama bu sağlayıcının adaptörü "
@@ -40,5 +48,5 @@ def get_llm_service() -> BaseLLMService:
 
     raise RuntimeError(
         f"Bilinmeyen LLM_PROVIDER='{provider}'. Geçerli değerler: "
-        f"gemini | openai | anthropic."
+        f"gemini | openai_compat | openai | anthropic."
     )

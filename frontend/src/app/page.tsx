@@ -305,6 +305,94 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── Persona split: Aday / İşveren ─────────────────────────── */}
+        {/* Placed right after the hero, on purpose: for a visitor who isn't
+            signed in yet, this IS the gate between the two platforms —
+            everything below is shared marketing, this is the fork. */}
+        <section className="space-y-10">
+          <Reveal className="text-center space-y-3">
+            <p className="eyebrow">İki platform, tek kanıt kaydı</p>
+            <h2 className="text-title text-fg">Hangi taraftasınız?</h2>
+            <p className="text-fg-soft max-w-2xl mx-auto">
+              Aday emeğini kanıtlar, işveren kanıtı gerekçesiyle okur. İkisi de
+              aynı raporu görür — pazarlık payı yok.
+            </p>
+          </Reveal>
+
+          <Reveal stagger>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Aday panel */}
+              <article className="card card-glow card-lift p-8 md:p-10 space-y-6 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
+                    Aday
+                  </span>
+                  <PersonIcon className="w-8 h-8 text-ok" />
+                </div>
+                <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
+                  Emeğinizi görünür kılın
+                </h3>
+                <ul className="space-y-3 text-sm text-fg-soft leading-relaxed flex-1">
+                  {[
+                    "Belgeniz süslü cümlelerden daha yüksek sesle konuşur — sertifika, ehliyet, ustalık belgesi, çalışma örneği.",
+                    "Başvurunuzun neden öyle sonuçlandığını madde madde okursunuz; kimse size kapalı kapı ardından karar vermez.",
+                    "Belgeleriniz yalnızca onay verdiğinizde işlenir, dilediğiniz an hesabınızla birlikte tamamen silinir.",
+                  ].map((t) => (
+                    <li key={t} className="flex gap-3">
+                      <span className="text-ok mt-0.5 shrink-0" aria-hidden="true">
+                        ✓
+                      </span>
+                      {t}
+                    </li>
+                  ))}
+                </ul>
+                <div className="pt-2">
+                  <Link href={isCandidate ? "/jobs" : "/register/aday"} className="btn btn-brand btn-shine w-full sm:w-auto">
+                    {isCandidate ? "İlanlara göz at" : "Aday olarak başla"}
+                    <span aria-hidden="true">&rarr;</span>
+                  </Link>
+                </div>
+              </article>
+
+              {/* İşveren panel */}
+              <article className="card card-glow card-lift p-8 md:p-10 space-y-6 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <span className="badge bg-brand/10 text-brand border-brand/30 uppercase tracking-wider">
+                    İşveren
+                  </span>
+                  <BuildingIcon className="w-8 h-8 text-brand" />
+                </div>
+                <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
+                  Kanıta bakarak seçin
+                </h3>
+                <ul className="space-y-3 text-sm text-fg-soft leading-relaxed flex-1">
+                  {[
+                    "Yüz özgeçmiş okumak yerine tek ekran: her aday, ilanınızın gereksinimlerine karşı belge belge değerlendirilir.",
+                    "Skor değil gerekçe görürsünüz — hangi yeterlilik hangi belgeyle, neden karşılandı ya da karşılanmadı.",
+                    "Şüpheli veya okunaksız belgeler işinize düşmeden önce insan incelemesinde elenir.",
+                  ].map((t) => (
+                    <li key={t} className="flex gap-3">
+                      <span className="text-brand mt-0.5 shrink-0" aria-hidden="true">
+                        ✓
+                      </span>
+                      {t}
+                    </li>
+                  ))}
+                </ul>
+                <div className="pt-2">
+                  <Link
+                    href={isEmployer ? "/employer/dashboard" : "/register/isveren"}
+                    className="btn btn-brand btn-shine w-full sm:w-auto"
+                  >
+                    {isEmployer ? "Panelinize dönün" : "İlk ilanınızı yayınlayın"}
+                    <span aria-hidden="true">&rarr;</span>
+                  </Link>
+                </div>
+              </article>
+            </div>
+          </Reveal>
+        </section>
+
         {/* ── Stats band ────────────────────────────────────────────── */}
         <Reveal>
           <section className="card border-gradient grid grid-cols-2 md:grid-cols-4 overflow-hidden">
@@ -350,91 +438,6 @@ export default function Home() {
             ))}
           </section>
         </Reveal>
-
-        {/* ── Persona split: Aday / İşveren ─────────────────────────── */}
-        <section className="space-y-10">
-          <Reveal className="text-center space-y-3">
-            <p className="eyebrow">İki taraf, tek rapor</p>
-            <h2 className="text-title text-fg">Hangi taraftasınız?</h2>
-            <p className="text-fg-soft max-w-2xl mx-auto">
-              Aday emeğini kanıtlar, işveren kanıtı gerekçesiyle okur. İkisi de
-              aynı raporu görür — pazarlık payı yok.
-            </p>
-          </Reveal>
-
-          <Reveal stagger>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Aday panel */}
-              <article className="card card-glow card-lift p-8 md:p-10 space-y-6 flex flex-col">
-                <div className="flex items-center justify-between">
-                  <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
-                    Aday
-                  </span>
-                  <PersonIcon className="w-8 h-8 text-ok" />
-                </div>
-                <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
-                  Emeğinizi görünür kılın
-                </h3>
-                <ul className="space-y-3 text-sm text-fg-soft leading-relaxed flex-1">
-                  {[
-                    "Belgeniz süslü cümlelerden daha yüksek sesle konuşur — sertifika, ehliyet, ustalık belgesi, çalışma örneği.",
-                    "Başvurunuzun neden öyle sonuçlandığını madde madde okursunuz; kimse size kapalı kapı ardından karar vermez.",
-                    "Belgeleriniz yalnızca onay verdiğinizde işlenir, dilediğiniz an hesabınızla birlikte tamamen silinir.",
-                  ].map((t) => (
-                    <li key={t} className="flex gap-3">
-                      <span className="text-ok mt-0.5 shrink-0" aria-hidden="true">
-                        ✓
-                      </span>
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-                <div className="pt-2">
-                  <Link href={isCandidate ? "/jobs" : "/register"} className="btn btn-brand btn-shine w-full sm:w-auto">
-                    {isCandidate ? "İlanlara göz at" : "Aday olarak başla"}
-                    <span aria-hidden="true">&rarr;</span>
-                  </Link>
-                </div>
-              </article>
-
-              {/* İşveren panel */}
-              <article className="card card-glow card-lift p-8 md:p-10 space-y-6 flex flex-col">
-                <div className="flex items-center justify-between">
-                  <span className="badge bg-brand/10 text-brand border-brand/30 uppercase tracking-wider">
-                    İşveren
-                  </span>
-                  <BuildingIcon className="w-8 h-8 text-brand" />
-                </div>
-                <h3 className="text-2xl font-semibold text-fg tracking-tight font-display">
-                  Kanıta bakarak seçin
-                </h3>
-                <ul className="space-y-3 text-sm text-fg-soft leading-relaxed flex-1">
-                  {[
-                    "Yüz özgeçmiş okumak yerine tek ekran: her aday, ilanınızın gereksinimlerine karşı belge belge değerlendirilir.",
-                    "Skor değil gerekçe görürsünüz — hangi yeterlilik hangi belgeyle, neden karşılandı ya da karşılanmadı.",
-                    "Şüpheli veya okunaksız belgeler işinize düşmeden önce insan incelemesinde elenir.",
-                  ].map((t) => (
-                    <li key={t} className="flex gap-3">
-                      <span className="text-brand mt-0.5 shrink-0" aria-hidden="true">
-                        ✓
-                      </span>
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-                <div className="pt-2">
-                  <Link
-                    href={isEmployer ? "/employer/dashboard" : "/register"}
-                    className="btn btn-brand btn-shine w-full sm:w-auto"
-                  >
-                    {isEmployer ? "Panelinize dönün" : "İlk ilanınızı yayınlayın"}
-                    <span aria-hidden="true">&rarr;</span>
-                  </Link>
-                </div>
-              </article>
-            </div>
-          </Reveal>
-        </section>
 
         {/* ── Örnek rapor: ürünün kalbi ─────────────────────────────── */}
         <section className="space-y-10">

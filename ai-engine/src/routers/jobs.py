@@ -123,6 +123,7 @@ def create_job(
     requirement = Requirement(
         external_id=f"req_job_{job.id}",
         description=job.description,
+        created_by_user_id=user.get("user_id"),
     )
     session.add(requirement)
     session.commit()

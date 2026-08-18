@@ -267,6 +267,13 @@ export async function loginUser(email: string, password: string) {
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
+  if (res.status === 401) {
+    // BY_STATUS[401] ("Bu işlem için giriş yapmanız gerekiyor.") is written
+    // for *other* endpoints refusing an unauthenticated caller. Shown here,
+    // on the login form itself, it reads as an expired session rather than
+    // what actually happened: a wrong e-mail or password.
+    throw new ApiError("E-posta veya şifre hatalı.", 401);
+  }
   if (!res.ok) throw await toApiError(res, "E-posta veya şifre hatalı.");
   return res.json();
 }
@@ -298,6 +305,18 @@ export async function registerUser(
       ...(role === "employer" ? company : {}),
     }),
   });
+  if (res.status === 400) {
+    // Every 400 the register endpoint raises already carries a specific,
+    // actionable Turkish message (VKN checksum, missing company field) —
+    // except the "already exists" check, which is in English. BY_STATUS[400]
+    // would otherwise hide the VKN/company reason behind a generic banner.
+    const body = await res.json().catch(() => null);
+    const detail = body && typeof body.detail === "string" ? body.detail : null;
+    if (detail && /already exists/i.test(detail)) {
+      throw new ApiError("Bu e-posta adresiyle zaten bir hesap var. Giriş yapmayı deneyin.", 400);
+    }
+    throw new ApiError(detail ?? "Kayıt tamamlanamadı. Bilgilerinizi kontrol edin.", 400);
+  }
   if (!res.ok) throw await toApiError(res, "Kayıt tamamlanamadı.");
   return res.json();
 }

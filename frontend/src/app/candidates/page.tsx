@@ -101,6 +101,11 @@ export default function CandidatesPage() {
           <h2 className="text-lg font-semibold text-fg tracking-tight">Aday Listesi</h2>
           {loading ? (
             <p className="text-fg-soft text-sm">Yükleniyor…</p>
+          ) : error ? (
+            // A 401 here previously fell through to "Kayıtlı aday
+            // bulunamadı." — indistinguishable from a genuinely empty list,
+            // so an anonymous visitor never learned they needed to log in.
+            <p className="text-fg-mute text-sm">{error}</p>
           ) : candidates.length === 0 ? (
             <p className="text-fg-mute text-sm">Kayıtlı aday bulunamadı.</p>
           ) : (

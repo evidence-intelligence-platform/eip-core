@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from src.db.database import get_session
 from src.db.models import Requirement
 from src.security.auth import verify_api_key
-from src.security.permissions import CurrentUser, require_employer, require_user
+from src.security.permissions import CurrentUser, require_employer
 
 router = APIRouter(
     prefix="/api/v1/requirements",
@@ -19,9 +19,13 @@ router = APIRouter(
 @router.get("/", response_model=list[Requirement])
 def list_requirements(
     session: Session = Depends(get_session),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_employer),
 ):
-    requirements = session.exec(select(Requirement)).all()
+    # Scoped to the caller's own requirements — an unfiltered global list let
+    # any employer read every other employer's hiring criteria.
+    requirements = session.exec(
+        select(Requirement).where(Requirement.created_by_user_id == user.get("user_id"))
+    ).all()
     return requirements
 
 class RequirementCreate(BaseModel):
@@ -61,6 +65,7 @@ def create_requirement(
     row = Requirement(
         external_id=requirement.external_id,
         description=requirement.description,
+        created_by_user_id=user.get("user_id"),
     )
     session.add(row)
     session.commit()

@@ -261,10 +261,13 @@ export default function CandidateEvidenceHub() {
     return j ? j.title : `İş İlanı #${jobId}`;
   };
 
-  // The candidate receives their pending/rejected rows too (the employer
-  // never does), so "doğrulanmış" must only count the approved ones — and
-  // the review outcome must be said out loud, not silently hidden.
-  const approvedCount = evidences.filter(isEvidenceApproved).length;
+  // "Doğrulanmış" must mean AI-verified, matching the candidate's own profile
+  // page (getReportData/summarizeEvidences). Counting merely review-approved
+  // rows overstated verification: an "Yetersiz Kanıt" row is approved for
+  // review too, but it was never actually verified.
+  const verifiedCount = evidences.filter(
+    (e) => isEvidenceApproved(e) && e.status === "VERIFIED"
+  ).length;
   const pendingCount = evidences.filter((e) => e.review_status === "pending").length;
   const rejectedCount = evidences.filter((e) => e.review_status === "rejected").length;
 
@@ -284,12 +287,12 @@ export default function CandidateEvidenceHub() {
         <div className="space-y-1">
           <p className="eyebrow">Aday Paneli</p>
           <h1 className="text-title text-fg">Kanıtlarınız, tek yerde</h1>
-          <p className="text-fg-mute text-sm">
-            Giriş yapan:{" "}
-            <span className="font-medium text-fg-soft">
-              {user?.email || "Aday Kullanıcı"}
-            </span>
-          </p>
+          {user && (
+            <p className="text-fg-mute text-sm">
+              Giriş yapan:{" "}
+              <span className="font-medium text-fg-soft">{user.email}</span>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -790,9 +793,17 @@ export default function CandidateEvidenceHub() {
                           : "Değerlendiriliyor"}
                       </span>
                     </div>
-                    <p className="text-[10px] text-fg-mute tabular-nums">
-                      Başvuru takip no: #{app.id}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-fg-mute tabular-nums">
+                        Başvuru takip no: #{app.id}
+                      </p>
+                      <Link
+                        href={`/reports/${app.id}`}
+                        className="text-[10px] text-brand hover:text-brand-strong hover:underline font-semibold shrink-0"
+                      >
+                        Raporu görüntüle &rarr;
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -805,11 +816,17 @@ export default function CandidateEvidenceHub() {
               Doğrulanmış kanıtlarım
             </h3>
             <p className="text-xs text-fg-soft leading-relaxed">
-              Sizin için kayıtlı{" "}
-              <strong className="text-brand tabular-nums">
-                {approvedCount}
-              </strong>{" "}
-              onaylı yetkinlik kanıtı bulunuyor.
+              {loading ? (
+                "Yükleniyor…"
+              ) : (
+                <>
+                  Sizin için kayıtlı{" "}
+                  <strong className="text-brand tabular-nums">
+                    {verifiedCount}
+                  </strong>{" "}
+                  doğrulanmış yetkinlik kanıtı bulunuyor.
+                </>
+              )}
             </p>
             {pendingCount > 0 && (
               <p className="text-xs text-warn leading-relaxed">
@@ -825,12 +842,25 @@ export default function CandidateEvidenceHub() {
                 deneyebilirsiniz.
               </p>
             )}
-            <Link
-              href={candidateExtId ? `/reports/${candidateExtId}` : "/login"}
-              className="text-xs text-brand hover:text-brand-strong hover:underline font-semibold block transition-colors"
-            >
-              Tam raporu incele &rarr;
-            </Link>
+            {/* Reports are keyed by application id, not candidate id — a
+                candidate can have several applications, each with its own
+                report. This card is a summary, so it links to the most
+                recent one; every application below carries its own link. */}
+            {applications.length > 0 ? (
+              <Link
+                href={`/reports/${applications[0].id}`}
+                className="text-xs text-brand hover:text-brand-strong hover:underline font-semibold block transition-colors"
+              >
+                Tam raporu incele &rarr;
+              </Link>
+            ) : (
+              <Link
+                href="/jobs"
+                className="text-xs text-fg-mute hover:text-fg-soft hover:underline font-medium block transition-colors"
+              >
+                Henüz bir başvurunuz yok — ilanlara göz atın &rarr;
+              </Link>
+            )}
           </div>
         </div>
       </div>

@@ -120,6 +120,18 @@ class Requirement(SQLModel, table=True):
     external_id: str = Field(index=True, unique=True, description="External ID from ATS or Core system")
     description: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_user_id: int | None = Field(
+        default=None,
+        foreign_key="useraccount.id",
+        index=True,
+        description=(
+            "Employer account that defined this requirement. Nullable because "
+            "rows created before ownership tracking have no attributable "
+            "owner. Scopes listing so one company's hiring criteria are never "
+            "visible to another — a shared global list let any employer read "
+            "every other employer's requirements."
+        ),
+    )
 
 
 class JobPosting(SQLModel, table=True):

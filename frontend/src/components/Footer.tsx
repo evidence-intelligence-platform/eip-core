@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { SealMark } from "@/components/illustrations";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Footer() {
+  const { user } = useAuth();
+
   return (
     <footer className="relative border-t border-line bg-well mt-auto overflow-hidden">
       {/* Brass hairline glow along the top edge */}
@@ -44,22 +49,35 @@ export default function Footer() {
                   İş İlanları
                 </Link>
               </li>
-              <li>
-                <Link
-                  href="/register"
-                  className="text-fg-soft hover:text-fg transition-colors"
-                >
-                  Hesap Oluştur
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/login"
-                  className="text-fg-soft hover:text-fg transition-colors"
-                >
-                  Giriş Yap
-                </Link>
-              </li>
+              {user ? (
+                <li>
+                  <Link
+                    href="/hesap"
+                    className="text-fg-soft hover:text-fg transition-colors"
+                  >
+                    Hesabım
+                  </Link>
+                </li>
+              ) : (
+                <>
+                  <li>
+                    <Link
+                      href="/register"
+                      className="text-fg-soft hover:text-fg transition-colors"
+                    >
+                      Hesap Oluştur
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href="/login"
+                      className="text-fg-soft hover:text-fg transition-colors"
+                    >
+                      Giriş Yap
+                    </Link>
+                  </li>
+                </>
+              )}
             </ul>
           </nav>
 

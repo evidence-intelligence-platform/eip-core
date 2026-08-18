@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -13,8 +13,16 @@ export default function CandidateRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { register } = useAuth();
+  const { user, loading: authLoading, register } = useAuth();
   const router = useRouter();
+
+  // A signed-in candidate landing here (e.g. a stale bookmark) should not
+  // see their own registration form again — send them to their panel.
+  useEffect(() => {
+    if (!authLoading && user?.role === "candidate") {
+      router.replace("/candidate/hub");
+    }
+  }, [authLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -29,7 +29,10 @@ export default function EmployerRegisterPage() {
         company_name: companyName,
         tax_number: taxNumber,
         company_size: companySize,
-        company_email: companyEmail,
+        // Omitted (not "") when the field isn't shown — the backend's
+        // EmailStr | None accepts a missing value but rejects "" as an
+        // invalid address, which made every "1-5 çalışan" signup 422.
+        company_email: companySize && companySize !== "1-5" ? companyEmail : undefined,
       });
       router.push("/employer/dashboard");
     } catch (err: unknown) {

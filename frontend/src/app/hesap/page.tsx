@@ -15,7 +15,11 @@ const ROLE_LABELS: Record<string, string> = {
 
 /** The user must type this to arm the delete button. Compared with a
  *  Turkish-locale uppercase so "sil" also counts — a QWERTY layout cannot
- *  produce the dotted İ, and the flow must not silently lock those users out. */
+ *  produce the dotted İ, and the flow must not silently lock those users out.
+ *  toLocaleUpperCase("tr-TR") only re-maps *lowercase* i → İ on the way up;
+ *  an already-uppercase ASCII "I" (what Shift+I types on any layout) passes
+ *  through unchanged, so typing "SIL" failed silently. The trailing replace
+ *  folds that leftover ASCII I onto İ after the locale uppercasing runs. */
 const CONFIRM_WORD = "SİL";
 
 export default function HesapPage() {
@@ -43,7 +47,8 @@ export default function HesapPage() {
     return () => clearTimeout(t);
   }, [deleted, router]);
 
-  const confirmed = confirmText.trim().toLocaleUpperCase("tr-TR") === CONFIRM_WORD;
+  const confirmed =
+    confirmText.trim().toLocaleUpperCase("tr-TR").replace(/I/g, "İ") === CONFIRM_WORD;
 
   const handleDelete = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -101,6 +101,9 @@ export default function RequirementsPage() {
           <h2 className="text-lg font-semibold text-fg tracking-tight">Gereksinim Listesi</h2>
           {loading ? (
             <p className="text-fg-soft text-sm">Yükleniyor…</p>
+          ) : error ? (
+            // Same fix as /candidates: a 401 must not read as "no data".
+            <p className="text-fg-mute text-sm">{error}</p>
           ) : requirements.length === 0 ? (
             <p className="text-fg-mute text-sm">Kayıtlı gereksinim bulunamadı.</p>
           ) : (

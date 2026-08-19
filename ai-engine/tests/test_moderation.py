@@ -398,7 +398,9 @@ def test_non_owner_candidate_is_refused_someone_elses_evidence(candidate_client)
     _insert_evidence(candidate_external_id=ext_id, review_status="approved")
 
     resp = candidate_client.get(f"/api/v1/candidates/{ext_id}/evidences")
-    assert resp.status_code == 403, resp.text
+    # candidates.py now collapses "exists but not yours" into the same 404 as
+    # "doesn't exist" to close an id-enumeration side channel.
+    assert resp.status_code == 404, resp.text
 
 
 def test_admin_sees_all_review_states(admin_client):
@@ -443,6 +445,47 @@ def test_evidences_endpoint_hides_moderation_internals(client, candidate_client)
         # What callers legitimately need stays intact.
         assert items[0]["status"] == "VERIFIED"
         assert items[0]["review_status"] == "approved"
+
+
+# ── PDF unit behaviour ──────────────────────────────────────────────────────
+
+def _encrypted_pdf(user_password: str, owner_password: str = "gizli-sahip-parolasi") -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.encrypt(user_password=user_password, owner_password=owner_password)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_owner_password_only_pdf_is_not_rejected_as_password_protected():
+    """
+    pypdf flags ANY encryption dictionary as is_encrypted=True, including the
+    common case of owner-password-only restrictions (e.g. "no printing/
+    editing" on an official diploma or certificate) where the user password is
+    blank and the document opens with no prompt in Acrobat or Chrome. Before
+    trying the empty password, this legitimate evidence document was rejected
+    outright with a misleading "password protected" error.
+    """
+    from src.services.pdf_service import extract_text_or_flag_scanned
+
+    pdf_bytes = _encrypted_pdf(user_password="")
+
+    # Must not raise — a blank-page PDF with no text layer looks scanned,
+    # exactly like the unencrypted _scanned_pdf() case elsewhere in this file.
+    text, is_scanned = extract_text_or_flag_scanned(pdf_bytes)
+    assert is_scanned is True
+    assert text == ""
+
+
+def test_truly_password_protected_pdf_is_still_rejected():
+    """A PDF whose USER password is non-blank still needs one and stays refused."""
+    from src.services.pdf_service import extract_text_or_flag_scanned
+
+    pdf_bytes = _encrypted_pdf(user_password="gercek-parola")
+
+    with pytest.raises(ValueError, match="Parola korumalı"):
+        extract_text_or_flag_scanned(pdf_bytes)
 
 
 # ── Storage unit behaviour ──────────────────────────────────────────────────

@@ -27,6 +27,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ai-engine/requirements.txt
 
+      - name: Run Ruff Lint
+        run: |
+          cd ai-engine
+          ruff check .
+
       - name: Run Pytest Test Suite
         env:
           LLM_MODEL_NAME: gemini-flash-latest
@@ -35,6 +40,13 @@ jobs:
         run: |
           cd ai-engine
           python -m pytest tests/ -v
+
+      - name: Run Full-Lifecycle Smoke Test
+        env:
+          INTERNAL_API_KEY: eif-test-internal-api-key
+        run: |
+          cd ai-engine
+          python scripts/smoke_test.py --skip-llm
 
   frontend-build:
     name: Frontend Next.js Build
@@ -60,6 +72,11 @@ jobs:
         run: |
           cd frontend
           npm test
+
+      - name: Run ESLint
+        run: |
+          cd frontend
+          npm run lint
 
       - name: Next.js Production Build Test
         run: |

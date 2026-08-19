@@ -24,6 +24,7 @@ SETUP:
   Example: INTERNAL_API_KEY=eif-internal-super-secret-key-2026
 """
 
+import hmac
 import os
 
 from fastapi import HTTPException, Security, status
@@ -71,8 +72,12 @@ def verify_api_key(api_key: str = Security(_api_key_header)) -> str:
             )
         )
 
-    # Zero Trust: reject anything that doesn't present the exact key
-    if not api_key or api_key != expected_key:
+    # Zero Trust: reject anything that doesn't present the exact key.
+    # compare_digest, not `!=` — this key gates the whole boundary between the
+    # public internet and every person-data endpoint if the private-network
+    # policy is ever misconfigured, so it gets the same timing-safe treatment
+    # as the password hash and JWT signature comparisons elsewhere.
+    if not api_key or not hmac.compare_digest(api_key, expected_key):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(

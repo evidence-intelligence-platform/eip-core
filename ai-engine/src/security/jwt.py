@@ -155,12 +155,47 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
         return payload
 
-    except ValueError as e:
+    except ValueError:
+        # The underlying reason (malformed / bad signature / expired) is an
+        # internal implementation detail, not something to hand back verbatim
+        # to a non-technical end user — one generic Turkish message covers all
+        # three the same way the rest of this file's user-facing errors do.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired JWT token: {str(e)}",
+            detail="Kimlik doğrulama token'ı geçersiz veya süresi dolmuş.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def _password_fingerprint(hashed_password: str) -> str:
+    """
+    Short fingerprint of a password hash, embedded in the JWT at issue time so
+    a password reset can invalidate every session minted before it.
+
+    Reusing hashed_password (rather than adding a new column) means a reset —
+    which already overwrites this field — automatically changes the
+    fingerprint too, with no extra schema or write required.
+    """
+    return hashlib.sha256(hashed_password.encode('utf-8')).hexdigest()
+
+
+def create_user_access_token(user: UserAccount) -> str:
+    """
+    Issues an access token for a signed-in UserAccount, bound to their current
+    password hash via the "pwf" claim.
+
+    Use this instead of calling create_access_token directly for user
+    sessions (register/login) — it guarantees the reset-invalidation claim
+    below is always present. Without it, a stolen token would keep working
+    for up to 24h after the victim "secures" the account by changing their
+    password — defeating the one thing password reset exists to do.
+    """
+    return create_access_token({
+        "sub": user.email,
+        "user_id": user.id,
+        "role": user.role,
+        "pwf": _password_fingerprint(user.hashed_password),
+    })
 
 
 def get_current_user_payload(
@@ -175,11 +210,20 @@ def get_current_user_payload(
     working — and could even recreate data for the erased identity. The
     account behind the token is therefore re-checked on every request, and the
     role is taken from that row rather than from the token's stale claim.
+
+    The token's "pwf" claim (see create_user_access_token), when present, is
+    checked against the account's CURRENT password hash for the same reason:
+    a password reset must kill every session issued before it, not just the
+    credential itself. Every token minted by /auth/register and /auth/login
+    carries this claim. The check only runs when the claim is present, so a
+    handful of internal token mints outside those two endpoints (ops
+    scripts, test fixtures) that predate this claim keep working unchanged —
+    they are not part of the attacker-reachable surface this defends.
     """
     if not credentials or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication token required. Header format: 'Authorization: Bearer <token>'",
+            detail="Kimlik doğrulama token'ı gerekli. Header formatı: 'Authorization: Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
     payload = decode_access_token(credentials.credentials)
@@ -190,9 +234,20 @@ def get_current_user_payload(
     if account is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired JWT token: account no longer exists",
+            detail="Kimlik doğrulama token'ı geçersiz veya süresi dolmuş: hesap artık mevcut değil.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    token_fingerprint = payload.get("pwf")
+    if token_fingerprint is not None and not hmac.compare_digest(
+        token_fingerprint, _password_fingerprint(account.hashed_password)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Oturumunuzun süresi doldu. Lütfen tekrar giriş yapın.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # The role claim was frozen when the token was issued, so a promotion or
     # demotion took up to 24 hours (or a manual sign-out) to reach the API —
     # while /auth/me already reported the new role and the UI unlocked on it.

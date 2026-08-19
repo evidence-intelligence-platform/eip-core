@@ -44,11 +44,17 @@ class CandidateRead(SQLModel):
     The table model must never be the response: `user_id` is the internal
     account key the ownership checks are built on, and `consent_timestamp` is
     a KVKK record — neither is any caller's business.
+
+    `consent_granted` is deliberately NOT exposed here. It is set once at
+    profile creation and never updated afterwards — the real, audited
+    consent trail lives in ConsentLog, written per extraction (see
+    record_consent). Surfacing this stale column would show every genuine
+    candidate as permanently non-consenting (auth.py sets it False at
+    registration) while letting nothing ever correct it.
     """
     id: int
     external_id: str
     name: str
-    consent_granted: bool
     created_at: datetime
 
 
@@ -102,6 +108,32 @@ def _assert_may_read_candidate(
     )
 
 
+def _get_readable_candidate(
+    external_id: str, user: CurrentUser, session: Session
+) -> Candidate:
+    """
+    Looks up a candidate and enforces read access as a single step, so a
+    non-existent external_id and one that exists but isn't the caller's to
+    see come back as the exact same 404.
+
+    Registration mints predictable ids ("cand_<user id>"), same as the
+    docstring on _assert_may_read_candidate explains. Doing "404 if missing"
+    then "403 if not yours" as two separate steps would leak the counting
+    attack that guard was built to prevent one layer up: the status code
+    alone (404 vs 403) would confirm which ids have registered, even though
+    the profile itself stays hidden. One outcome for both cases closes that.
+    """
+    not_found = HTTPException(status_code=404, detail="Aday bulunamadı.")
+    candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
+    if not candidate:
+        raise not_found
+    try:
+        _assert_may_read_candidate(candidate, user, session)
+    except HTTPException:
+        raise not_found
+    return candidate
+
+
 @router.get("/", response_model=list[CandidateRead])
 def list_candidates(
     session: Session = Depends(get_session),
@@ -128,10 +160,14 @@ class CandidateCreate(SQLModel):
     anchor for the moderation gate and for KVKK deletion, so a caller able to
     set it could bind a profile to somebody else's account — or claim an
     external_id whose evidence is not theirs. It is filled in from the JWT.
+
+    `consent_granted` is intentionally not accepted here either: it is not a
+    live consent signal (that is ConsentLog, written per extraction), so a
+    client should never be able to set it to True with zero backing evidence
+    at profile-creation time.
     """
     external_id: str
     name: str
-    consent_granted: bool = True
 
 
 @router.post("/", response_model=Candidate)
@@ -149,18 +185,18 @@ def create_candidate(
     if reserved and int(reserved.group(1)) != user.get("user_id"):
         raise HTTPException(
             status_code=403,
-            detail="This external_id is reserved for another account.",
+            detail="Bu external_id başka bir hesaba ayrılmış.",
         )
     existing = session.exec(select(Candidate).where(Candidate.external_id == candidate_in.external_id)).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Candidate with this external_id already exists")
+        raise HTTPException(status_code=400, detail="Bu external_id'ye sahip bir aday zaten mevcut.")
     candidate = Candidate(
         external_id=candidate_in.external_id,
         name=candidate_in.name,
-        consent_granted=candidate_in.consent_granted,
         # Ownership is server-side, exactly as job postings record their
         # creator (jobs.py); the client never gets a say in whose profile
-        # this is.
+        # this is. consent_granted is left at its table default — it is not
+        # a client-settable field (see CandidateCreate).
         user_id=user.get("user_id"),
     )
     session.add(candidate)
@@ -228,11 +264,7 @@ def get_candidate(
     Looks up a single candidate. Without this, the UI had to download the
     whole roster just to check whether one record already existed.
     """
-    candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-    _assert_may_read_candidate(candidate, user, session)
-    return candidate
+    return _get_readable_candidate(external_id, user, session)
 
 
 @router.get("/{external_id}/evidences", response_model=list[EvidenceRead])
@@ -241,10 +273,7 @@ def get_candidate_evidences(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_user),
 ):
-    candidate = session.exec(select(Candidate).where(Candidate.external_id == external_id)).first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-    _assert_may_read_candidate(candidate, user, session)
+    candidate = _get_readable_candidate(external_id, user, session)
 
     query = select(Evidence).where(Evidence.candidate_external_id == external_id)
     # Moderation gate: an upload awaiting (or refused by) human review must

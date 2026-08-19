@@ -37,7 +37,7 @@ def _require_role(*allowed: str):
         if role not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"This action requires one of these roles: {', '.join(allowed)}.",
+                detail=f"Bu işlem için gereken roller: {', '.join(allowed)}.",
             )
         return payload
 

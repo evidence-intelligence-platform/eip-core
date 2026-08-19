@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
 import { PersonIcon, BuildingIcon } from "@/components/CategoryIcon";
 
@@ -8,6 +11,24 @@ import { PersonIcon, BuildingIcon } from "@/components/CategoryIcon";
     this screen (form fields, redirect target, dashboard) is persona-specific;
     this page's only job is to send the visitor down the right path. */
 export default function RegisterGatePage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  // A signed-in visitor landing here should be sent to their own panel
+  // rather than being offered a fork into forms that would overwrite their
+  // session if submitted. Mirrors the guard on the two persona-specific pages.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(
+        user.role === "admin"
+          ? "/admin/moderation"
+          : user.role === "employer"
+          ? "/employer/dashboard"
+          : "/candidate/hub"
+      );
+    }
+  }, [authLoading, user, router]);
+
   return (
     <div className="max-w-2xl mx-auto my-12 space-y-8 animate-fade-in-up">
       <div className="text-center space-y-3">

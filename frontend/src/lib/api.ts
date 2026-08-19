@@ -210,6 +210,7 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
     409: "Bu kayıt daha önce işlenmiş.",
     413: "Dosya boyutu çok büyük.",
     429: "Çok fazla istek gönderildi. Lütfen biraz bekleyin.",
+    500: "Beklenmeyen bir sunucu hatası oluştu.",
     502: "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.",
     503: "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin.",
     504: "İşlem zaman aşımına uğradı. Lütfen tekrar deneyin.",
@@ -422,6 +423,30 @@ export async function createJob(job: Partial<JobPosting>, token?: string): Promi
     body: JSON.stringify(job),
   });
   if (!res.ok) throw await toApiError(res, "İlan yayınlanamadı.");
+  return res.json();
+}
+
+// Employer-scoped roster including drafts/closed postings — unlike getJobs(),
+// which only returns active listings for the public board.
+export async function getMyJobs(): Promise<JobPosting[]> {
+  const res = await fetch(`${API_URL}/jobs/mine`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "İlanlarınız yüklenemedi.");
+  return res.json();
+}
+
+export async function updateJob(
+  jobId: number,
+  patch: Partial<Pick<JobPosting, "title" | "description" | "category" | "status">>
+): Promise<JobPosting> {
+  const res = await fetch(`${API_URL}/jobs/${jobId}`, {
+    method: "PATCH",
+    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw await toApiError(res, "İlan güncellenemedi.");
   return res.json();
 }
 

@@ -77,6 +77,7 @@ export default function Navbar() {
   // Close the drawer and the account menu whenever the route changes — a
   // tapped link must not leave either hanging open over the new page.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing open menus to route changes; there is no external system to defer to here
     setOpen(false);
     setAcctOpen(false);
   }, [pathname]);
@@ -212,6 +213,10 @@ export default function Navbar() {
               {/* Dropdown */}
               <div
                 role="menu"
+                // `inert` (not just opacity/pointer-events) keeps a closed menu's
+                // links out of tab order and the accessibility tree — otherwise a
+                // keyboard user tabs onto "Hesabım"/"Çıkış Yap" while invisible.
+                inert={!acctOpen}
                 className={`absolute right-0 top-full mt-2 w-56 origin-top-right card border-line-strong shadow-2xl p-1.5 transition-[opacity,transform] duration-200 ${
                   acctOpen
                     ? "opacity-100 translate-y-0"
@@ -305,6 +310,10 @@ export default function Navbar() {
       {/* Sliding panel */}
       <div
         id="mobil-menu"
+        // Same reasoning as the account dropdown: `inert` removes the closed
+        // drawer's links/buttons from tab order and the a11y tree, matching
+        // how the backdrop above is already `aria-hidden` when closed.
+        inert={!open}
         className={`fixed inset-x-0 top-16 z-30 md:hidden origin-top bg-ground border-b border-line-strong shadow-2xl transition-[transform,opacity] duration-300 ${
           open
             ? "opacity-100 translate-y-0"

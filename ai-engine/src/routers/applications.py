@@ -161,7 +161,7 @@ def create_application(
     """Submits a candidate application for a specific job posting."""
     candidate = session.exec(select(Candidate).where(Candidate.id == app_in.candidate_id)).first()
     if not candidate:
-        raise HTTPException(status_code=404, detail=f"Candidate ID {app_in.candidate_id} not found.")
+        raise HTTPException(status_code=404, detail=f"{app_in.candidate_id} numaralı aday bulunamadı.")
 
     # An application is filed under an identity, and candidate ids are small
     # sequential integers: without this a signed-in stranger could apply in a
@@ -171,12 +171,36 @@ def create_application(
     if user.get("role") != "admin" and candidate.user_id != user.get("user_id"):
         raise HTTPException(
             status_code=403,
-            detail="Applications can only be submitted for your own candidate profile.",
+            detail="Başvuru yalnızca kendi aday profiliniz adına yapılabilir.",
         )
 
     job = session.exec(select(JobPosting).where(JobPosting.id == app_in.job_id)).first()
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job Posting ID {app_in.job_id} not found.")
+        raise HTTPException(status_code=404, detail=f"{app_in.job_id} numaralı ilan bulunamadı.")
+
+    # Draft postings are not public yet and closed postings stopped taking
+    # applicants — GET /jobs/ already hides both from the public listing, so
+    # letting an old link or a guessed id apply here anyway would put a
+    # candidate in front of an employer who does not believe the role is
+    # open at all.
+    if job.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail="Bu ilan artık başvuruya açık değil.",
+        )
+
+    # One candidate, one open application per job: without this a candidate
+    # could resubmit after being declined and show up a second time as a
+    # fresh, undecided row in the same employer's pipeline — quietly
+    # reopening a decision the "irreversible" rule below was meant to close.
+    duplicate = session.exec(
+        select(JobApplication).where(
+            JobApplication.candidate_id == app_in.candidate_id,
+            JobApplication.job_id == app_in.job_id,
+        )
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Bu ilana zaten başvurdunuz.")
 
     application = JobApplication(
         candidate_id=app_in.candidate_id,
@@ -203,7 +227,7 @@ def update_application_status(
     """
     application = session.exec(select(JobApplication).where(JobApplication.id == app_id)).first()
     if not application:
-        raise HTTPException(status_code=404, detail=f"Application ID {app_id} not found.")
+        raise HTTPException(status_code=404, detail=f"{app_id} numaralı başvuru bulunamadı.")
 
     # Whose pipeline is this? Application ids are small sequential integers and
     # the decision below is irreversible, so with the role check alone any
@@ -215,11 +239,11 @@ def update_application_status(
         if job is None or job.created_by_user_id != user.get("user_id"):
             raise HTTPException(
                 status_code=403,
-                detail="Applications can only be decided by the employer who posted the job.",
+                detail="Başvurular yalnızca ilanı yayınlayan işveren tarafından karara bağlanabilir.",
             )
 
     if application.status in ["accepted", "declined"]:
-        raise HTTPException(status_code=409, detail="Application already processed. Cannot update status again.")
+        raise HTTPException(status_code=409, detail="Başvuru zaten sonuçlandırılmış. Durum tekrar güncellenemez.")
 
     application.status = status_update.status
     session.add(application)

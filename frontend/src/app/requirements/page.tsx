@@ -38,13 +38,26 @@ export default function RequirementsPage() {
     // runs *after* this one; fetching while it is still loading would fire
     // the request without an Authorization header and 401.
     if (authLoading) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/auth-ready, the standard data-load pattern used throughout this app
     fetchRequirements();
   }, [authLoading]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
+
+    // `req_job_` is reserved for the criterion auto-created alongside each
+    // job posting (06_API_CONTRACTS.md §4.2/§4.5); claiming one here 403s
+    // and the shared error mapper turns that into a generic "yetkiniz yok"
+    // message that doesn't explain the real, fixable problem.
+    if (newExternalId.trim().toLowerCase().startsWith("req_job_")) {
+      setError(
+        "\"req_job_\" ile başlayan kimlikler sistem tarafından ilan oluşturulurken otomatik ayrılır; bu ön eki kullanamazsınız. Lütfen farklı bir kimlik seçin (örn. req_deneyim_2yil)."
+      );
+      return;
+    }
+
+    setSubmitting(true);
     try {
       await createRequirement({ external_id: newExternalId, description: newDescription });
       setNewExternalId("");
@@ -123,6 +136,11 @@ export default function RequirementsPage() {
         <div>
           <div className="card p-6 sticky top-28 space-y-4">
             <h2 className="text-lg font-semibold text-fg tracking-tight">Yeni Gereksinim Tanımla</h2>
+            <p className="text-xs text-fg-mute leading-relaxed">
+              Bu kural, adayların yüklediği belgeler değerlendirilirken kullanılır: sistem her
+              belgeyi burada tanımladığınız kriterle karşılaştırıp gerekçesiyle birlikte raporlar.
+              Sonucu, adayın başvurduğu ilanın raporunda görürsünüz.
+            </p>
             {error && (
               <div role="alert" className="p-3 bg-err/10 border border-err/30 text-err rounded-md text-xs">
                 {error}
@@ -131,7 +149,7 @@ export default function RequirementsPage() {
 
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label htmlFor="gereksinim-id" className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">Gereksinim ID (External ID)</label>
+                <label htmlFor="gereksinim-id" className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">Gereksinim Kimliği</label>
                 <input
                   id="gereksinim-id"
                   type="text"
@@ -139,8 +157,12 @@ export default function RequirementsPage() {
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
                   className="field"
-                  placeholder="Örn: req_001"
+                  placeholder="Örn: req_deneyim_2yil"
                 />
+                <p className="mt-1.5 text-[11px] text-fg-mute">
+                  Kısa ve benzersiz bir kimlik seçin. &quot;req_job_&quot; ile başlayan kimlikler
+                  ilan oluştururken sistem tarafından otomatik atanır ve buradan kullanılamaz.
+                </p>
               </div>
               <div>
                 <label htmlFor="gereksinim-aciklama" className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">Gereksinim Açıklaması</label>

@@ -203,7 +203,9 @@ def test_candidate_cannot_read_another_candidates_profile(candidate_client):
     """
     The roster is employer-only — but identities are minted as "cand_<user id>"
     from a sequential key, so the by-id view has to draw the same line or
-    anyone who can count reads every profile.
+    anyone who can count reads every profile. The unauthorized case is folded
+    into the same 404 a truly missing id returns, so the status code itself
+    can't be used to enumerate which "cand_<n>" ids exist.
     """
     from tests.conftest import create_candidate_profile
 
@@ -211,7 +213,7 @@ def test_candidate_cannot_read_another_candidates_profile(candidate_client):
     create_candidate_profile(ext_id, user_id=77777, name="Yabancı")
 
     resp = candidate_client.get(f"/api/v1/candidates/{ext_id}")
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 404, resp.text
 
 
 def test_candidate_interests_round_trip(candidate_client):
@@ -297,9 +299,11 @@ def test_employer_cannot_read_a_candidate_who_did_not_apply(client):
     ext_id = f"cand_stranger_{uuid.uuid4().hex[:8]}"
     create_candidate_profile(ext_id, user_id=88888, name="İlgisiz Aday")
 
-    # No application to any of employer 900's postings → refused both views.
-    assert client.get(f"/api/v1/candidates/{ext_id}").status_code == 403
-    assert client.get(f"/api/v1/candidates/{ext_id}/evidences").status_code == 403
+    # No application to any of employer 900's postings → refused both views,
+    # as a uniform 404 (not 403) so the status code doesn't itself confirm
+    # the candidate exists.
+    assert client.get(f"/api/v1/candidates/{ext_id}").status_code == 404
+    assert client.get(f"/api/v1/candidates/{ext_id}/evidences").status_code == 404
 
     # …and absent from the roster.
     roster = client.get("/api/v1/candidates/")

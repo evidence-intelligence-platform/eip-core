@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import { getReportData, ReportData } from "@/lib/api";
+import { getReportData, getJobs, ReportData, JobPosting } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
 
@@ -37,6 +37,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   const { loading: authLoading } = useAuth();
 
   const [data, setData] = useState<ReportData | null>(null);
+  const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,8 +49,15 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     async function load() {
       try {
         setLoading(true);
-        const rep = await getReportData(candidateId);
+        setError(null);
+        // Jobs are only needed to turn a req_job_<id> into a readable title
+        // below; a failure to load them should not block the report itself.
+        const [rep, jobsList] = await Promise.all([
+          getReportData(candidateId),
+          getJobs().catch(() => [] as JobPosting[]),
+        ]);
         setData(rep);
+        setJobs(jobsList);
       } catch (err: unknown) {
         if (err instanceof Error) {
           setError(err.message);
@@ -63,18 +71,53 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     load();
   }, [authLoading, candidateId]);
 
+  // Resolves the internal requirement id into what the evidence was actually
+  // evaluated against, the same way the candidate hub already turns a bare
+  // job_id into a real job title for the applications list — a non-technical
+  // reader should never have to decode "req_job_42" themselves.
+  const getRequirementLabel = (reqId: string): string => {
+    if (reqId === "req_general_cv") return "Genel özgeçmiş değerlendirmesi";
+    if (reqId === "req_general_accomplishment") return "Genel mesleki deneyim";
+    const jobMatch = reqId.match(/^req_job_(\d+)$/);
+    if (jobMatch) {
+      const job = jobs.find((j) => String(j.id) === jobMatch[1]);
+      if (job) return job.title;
+    }
+    return reqId;
+  };
+
+  // Same back link in every branch — a stale link, a 403/404, or a slow
+  // network must not strand the reader with no way forward but the browser
+  // back button.
+  const backLink = (
+    <div>
+      <Link
+        href="/candidates"
+        className="text-xs text-fg-mute hover:text-fg font-semibold flex items-center gap-1 transition-colors"
+      >
+        &larr; Aday Havuzuna Dön
+      </Link>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto py-20 text-center text-fg-soft text-sm">
-        Aday profili yükleniyor…
+      <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
+        {backLink}
+        <div className="py-16 text-center text-fg-soft text-sm">
+          Aday profili yükleniyor…
+        </div>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div role="alert" className="max-w-md mx-auto my-12 p-6 bg-err/10 border border-err/30 text-err text-sm rounded-md text-center">
-        {error || "Aday profili bulunamadı."}
+      <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
+        {backLink}
+        <div role="alert" className="max-w-md mx-auto my-12 p-6 bg-err/10 border border-err/30 text-err text-sm rounded-md text-center">
+          {error || "Aday profili bulunamadı."}
+        </div>
       </div>
     );
   }
@@ -83,15 +126,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto py-8 px-4">
-      {/* Back Link */}
-      <div>
-        <Link
-          href="/candidates"
-          className="text-xs text-fg-mute hover:text-fg font-semibold flex items-center gap-1 transition-colors"
-        >
-          &larr; Aday Havuzuna Dön
-        </Link>
-      </div>
+      {backLink}
 
       {/* Profile Header Card */}
       <div className="card p-8 space-y-6 relative overflow-hidden">
@@ -144,8 +179,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
             {evidences.map((ev) => (
               <div key={ev.id} className="card card-hover p-6 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-sm bg-well text-fg-soft border border-line">
-                    {ev.requirement_external_id}
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-well text-fg-soft border border-line">
+                    {getRequirementLabel(ev.requirement_external_id)}
                   </span>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <span

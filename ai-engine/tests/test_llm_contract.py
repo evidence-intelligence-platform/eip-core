@@ -111,6 +111,98 @@ def test_summarize_traits_degrades_to_empty_by_default():
     assert llm.summarize_traits(["Doğrulanmış kanıt gerekçesi."]) == []
 
 
+def test_standout_traits_exclude_evidence_from_a_different_employers_job(monkeypatch):
+    """
+    Regression test for the standout-trait cross-employer leak: traits.py used
+    to fetch ALL of a candidate's VERIFIED evidence by candidate_external_id
+    alone, with no filter on which job/requirement it was submitted against —
+    so an employer's dashboard could have a competitor's job-specific evidence
+    (a shift report, an incident description, a client name) summarized into a
+    trait tag and shown on their own posting. traits.py must scope the same
+    way reports.py's `_concerns_job` does: job-neutral evidence is visible
+    everywhere, but evidence tied to another posting's own "req_job_<id>"
+    requirement must never reach the summarizer for THIS application.
+    """
+    import uuid
+
+    from sqlmodel import Session
+
+    from src.db.models import Candidate, Evidence, JobApplication, JobPosting, Requirement
+    from src.services import traits as traits_module
+    from tests.conftest import TEST_ENGINE
+
+    external_id = f"cand_traits_{uuid.uuid4().hex[:12]}"
+    with Session(TEST_ENGINE) as session:
+        candidate = Candidate(external_id=external_id, name="Trait Testi")
+        session.add(candidate)
+        session.flush()
+
+        job_a = JobPosting(title="İşveren A İlanı", description="A ilanı için açıklama.")
+        job_b = JobPosting(title="İşveren B İlanı", description="B ilanı için açıklama.")
+        session.add(job_a)
+        session.add(job_b)
+        session.flush()
+        job_a_id, job_b_id = job_a.id, job_b.id
+
+        session.add(Requirement(external_id=f"req_job_{job_a_id}", description="A gereksinimi"))
+        session.add(Requirement(external_id=f"req_job_{job_b_id}", description="B gereksinimi"))
+
+        application_a = JobApplication(candidate_id=candidate.id, job_id=job_a_id, status="submitted")
+        session.add(application_a)
+        session.flush()
+        application_a_id = application_a.id
+
+        # Evidence filed against job B's own requirement — this is what must
+        # never surface on employer A's dashboard.
+        session.add(Evidence(
+            candidate_external_id=external_id,
+            requirement_external_id=f"req_job_{job_b_id}",
+            source_type="PDF_RESUME",
+            status="VERIFIED",
+            confidence_score=95,
+            reasoning="B işvereninin gizli vardiya raporunu doğrulayan özel gerekçe.",
+            evidence_pointer="pdf://b-vardiya.pdf#page=1",
+            review_status="approved",
+        ))
+        # Job-neutral evidence — describes the person, must stay visible everywhere.
+        session.add(Evidence(
+            candidate_external_id=external_id,
+            requirement_external_id="req_general_cv",
+            source_type="CERTIFICATE_LICENSE",
+            status="VERIFIED",
+            confidence_score=90,
+            reasoning="Genel CV doğrulama gerekçesi.",
+            evidence_pointer="pdf://cv.pdf#page=1",
+            review_status="approved",
+        ))
+        session.commit()
+
+    captured: dict[str, list[str]] = {}
+
+    class _RecordingLLM:
+        def summarize_traits(self, reasoning_texts):
+            captured["reasoning_texts"] = list(reasoning_texts)
+            return ["Test Etiketi"]
+
+    # Bypasses any real network call — this test locks the scoping, not the
+    # (already-covered) LLM plumbing.
+    monkeypatch.setattr(traits_module, "_get_llm", lambda: _RecordingLLM())
+
+    with Session(TEST_ENGINE) as session:
+        application_a = session.get(JobApplication, application_a_id)
+        traits = traits_module.standout_traits_for(session, application_a, external_id)
+
+    assert traits == ["Test Etiketi"]
+    assert "reasoning_texts" in captured, "the LLM summarizer must have been called"
+    assert not any("vardiya" in text for text in captured["reasoning_texts"]), (
+        "evidence submitted against another employer's job-specific requirement "
+        "must never reach the trait summarizer for this application"
+    )
+    assert any("Genel CV" in text for text in captured["reasoning_texts"]), (
+        "job-neutral evidence must still be visible"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Output schema conformance
 # ─────────────────────────────────────────────────────────────────────────────

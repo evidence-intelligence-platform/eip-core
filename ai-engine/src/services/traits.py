@@ -17,10 +17,31 @@ called at most once per applicant, not on every dashboard load.
 """
 
 import json
+import re
 
 from sqlmodel import Session, or_, select
 
 from src.db.models import Evidence, JobApplication
+
+# Publishing a posting mints exactly one criterion, "req_job_<job id>"
+# (jobs.py / routers/reports.py). Everything else — "req_general_cv" and
+# friends — is job-neutral evidence about the person and is fair game for
+# every employer's dashboard.
+_JOB_REQUIREMENT_PATTERN = re.compile(r"^req_job_(\d+)$")
+
+
+def _concerns_job(requirement_external_id: str, job_id: int) -> bool:
+    """
+    Same rule reports.py's `_concerns_job` enforces: evidence filed against
+    another posting's job-specific criterion (a shift report, an incident
+    description, a client name quoted in `reasoning`) was submitted to a
+    competitor and must never be summarized onto this employer's dashboard.
+    Job-neutral evidence (a CV, a certificate) describes the person and is
+    visible everywhere.
+    """
+    match = _JOB_REQUIREMENT_PATTERN.match(requirement_external_id)
+    return match is None or int(match.group(1)) == job_id
+
 
 # What each verified source proves, in the employer's language — the
 # deterministic fallback when no AI summary is available.
@@ -54,13 +75,19 @@ def _get_llm():
     return _llm_service
 
 
-def _verified_evidence(session: Session, external_id: str) -> list[Evidence]:
+def _verified_evidence(session: Session, external_id: str, job_id: int) -> list[Evidence]:
     rows = session.exec(
         select(Evidence)
         .where(Evidence.candidate_external_id == external_id)
         .where(Evidence.status == "VERIFIED")
         .where(or_(Evidence.review_status == "approved", Evidence.review_status.is_(None)))
     ).all()
+    # Same job-neutral-vs-job-specific scoping as reports.py: a trait derived
+    # from evidence submitted against another employer's posting must not
+    # surface here. Filtered in Python, not SQL, for the same reason
+    # reports.py does — "not another posting's criterion" is a pattern match
+    # over a small per-candidate row set.
+    rows = [e for e in rows if _concerns_job(e.requirement_external_id, job_id)]
     rows.sort(key=lambda e: (e.confidence_score or 0), reverse=True)
     return rows
 
@@ -86,7 +113,7 @@ def standout_traits_for(session: Session, application: JobApplication, external_
         except (ValueError, TypeError):
             pass  # corrupt cache — recompute below
 
-    evidences = _verified_evidence(session, external_id)
+    evidences = _verified_evidence(session, external_id, application.job_id)
     if not evidences:
         # Nothing verified yet; cache the empty result so we don't re-scan.
         application.standout_traits = "[]"

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { deleteMyAccount } from "@/lib/api";
+import { deleteMyAccount, ApiError } from "@/lib/api";
 import { SealMark, IconKvkk } from "@/components/illustrations";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -62,10 +62,13 @@ export default function HesapPage() {
       setDeleted(true);
       logout();
     } catch (err: unknown) {
+      // fetch() itself rejecting (offline, DNS, dropped connection, CORS)
+      // throws a plain TypeError whose raw English message must never reach
+      // the UI — only ApiError carries a message we've already localized.
       setError(
-        err instanceof Error
+        err instanceof ApiError
           ? err.message
-          : "Hesabınız silinemedi. Lütfen tekrar deneyin."
+          : "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
       );
     } finally {
       setDeleting(false);

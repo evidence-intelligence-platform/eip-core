@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,8 +13,23 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { login } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const router = useRouter();
+
+  // A signed-in user landing here (stale bookmark, back button) should not
+  // be shown a login form for the account they're already in — send them
+  // to their panel instead of letting a resubmit silently swap sessions.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(
+        user.role === "admin"
+          ? "/admin/moderation"
+          : user.role === "employer"
+          ? "/employer/dashboard"
+          : "/candidate/hub"
+      );
+    }
+  }, [authLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,10 +49,12 @@ export default function LoginPage() {
           : "/candidate/hub"
       );
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("E-posta veya şifre hatalı.");
+        // fetch() itself rejected (offline, DNS, dropped connection, CORS) —
+        // the thrown TypeError's English message must never reach the UI.
+        setError("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.");
       }
     } finally {
       setLoading(false);
@@ -76,6 +94,7 @@ export default function LoginPage() {
             id="giris-eposta"
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ornek@sirket.com"
@@ -94,6 +113,7 @@ export default function LoginPage() {
             id="giris-sifre"
             type="password"
             required
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"

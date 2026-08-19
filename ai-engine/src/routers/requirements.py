@@ -2,7 +2,7 @@
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
 from src.db.database import get_session
@@ -38,8 +38,20 @@ class RequirementCreate(BaseModel):
     key — colliding with (or squatting) the id the database would hand out
     next — and forge the creation timestamp.
     """
-    external_id: str
-    description: str
+    external_id: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1)
+
+    @field_validator("external_id", "description")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        # A blank description would mint an empty AI grading criterion (the
+        # extraction pipeline grades every applicant against this text) —
+        # Explainability First means there must always be a real criterion
+        # behind a verdict, never a silent no-op comparison.
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Bu alan boş bırakılamaz.")
+        return stripped
 
 
 @router.post("/", response_model=Requirement)

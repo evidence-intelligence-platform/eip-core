@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ENGINE_URL = process.env.EIP_API_URL || "http://127.0.0.1:8080";
-const INTERNAL_KEY = process.env.EIP_INTERNAL_API_KEY || "eif-test-internal-api-key";
+const INTERNAL_KEY = process.env.EIP_INTERNAL_API_KEY;
 
 // Only headers the engine actually needs are forwarded; everything else
 // (cookies, browser fingerprint headers) stays on this side.
@@ -25,6 +25,16 @@ const FORWARDED_REQUEST_HEADERS = ["content-type", "authorization"];
 const REQUEST_TIMEOUT_MS = 60_000;
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
+  // Mirrors the engine's own verify_api_key(): a missing value is a 500,
+  // never a silent bypass onto a known/default key (08_SECURITY_ARCHITECTURE.md §3.2).
+  if (!INTERNAL_KEY) {
+    console.error("[eip-proxy] EIP_INTERNAL_API_KEY is not set — refusing to proxy");
+    return NextResponse.json(
+      { detail: "Sunucu yapılandırma hatası. Lütfen daha sonra tekrar deneyin." },
+      { status: 500 },
+    );
+  }
+
   const search = req.nextUrl.search;
   // Preserve the caller's trailing slash. FastAPI declares the collection
   // routes as "/candidates/" etc. and answers a slash-less POST with a 307,
@@ -42,11 +52,33 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
 
   // Every request reaches the engine from this server, so without this the
   // consent log recorded this proxy's own address for every candidate — the
-  // column that is supposed to substantiate who granted consent. Pass the
-  // caller's address on; the engine reads the left-most entry. It is only as
-  // trustworthy as the ingress in front of Next, which is what sets it.
-  const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip");
-  if (clientIp) headers.set("x-forwarded-for", clientIp);
+  // column that is supposed to substantiate who granted consent. The engine's
+  // client_ip() (src/rate_limit.py) trusts the RIGHT-MOST X-Forwarded-For
+  // entry, not the left-most — the left-most is attacker-supplied end to end
+  // (08_SECURITY_ARCHITECTURE.md §10). We take only the right-most entry of
+  // whatever arrived here and forward that single value, rather than relaying
+  // the inbound chain verbatim, so this proxy's read of "right-most" and the
+  // engine's agree regardless of how many hops a caller tries to prepend.
+  //
+  // Residual gap: this proxy is the layer directly in front of the engine
+  // (private network, no further hop), so per the doc above it is the one
+  // that should append the address it independently observed rather than
+  // trust the caller's header at all. X-Forwarded-For is not a forbidden
+  // header for browser fetch(), so a caller can set it on a request to
+  // /api/eip/* directly. Next's own request pipeline only defaults this
+  // header from the raw socket when it is absent (`req.headers['x-forwarded-for']
+  // ??= originalRequest.socket.remoteAddress` in
+  // next/dist/server/base-server.js) — a client-supplied header pre-empts
+  // that, and Route Handlers have no supported API to read the raw socket
+  // once it has. Fully closing this requires confirming (or configuring)
+  // that whatever fronts this container strips a client-supplied
+  // X-Forwarded-For before setting its own; that is a deployment concern
+  // outside this file.
+  const inboundIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip");
+  if (inboundIp) {
+    const rightmost = inboundIp.split(",").pop()?.trim();
+    if (rightmost) headers.set("x-forwarded-for", rightmost);
+  }
 
   // "manual" so an unexpected upstream redirect surfaces as a response we can
   // handle here, instead of a follow attempt that throws on an already-read body.

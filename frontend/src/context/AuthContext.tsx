@@ -25,6 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const savedToken = localStorage.getItem("eip_token");
     if (savedToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating auth state from localStorage on mount is the sync point itself, not a side effect to defer
       setToken(savedToken);
       setAuthToken(savedToken);
       getMe(savedToken)

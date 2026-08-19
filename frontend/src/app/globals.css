@@ -364,6 +364,13 @@ body::after {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+@media (max-width: 640px) {
+  /* iOS Safari auto-zooms the viewport when focusing an input under 16px. */
+  .field {
+    font-size: 1rem;
+  }
+}
+
 .field::placeholder {
   color: var(--fg-mute);
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { requestPasswordReset } from "@/lib/api";
+import { requestPasswordReset, ApiError } from "@/lib/api";
 import { SealMark } from "@/components/illustrations";
 
 export default function ForgotPasswordPage() {
@@ -21,10 +21,12 @@ export default function ForgotPasswordPage() {
       // the UI mirrors that and never confirms whether an account exists.
       setSent(true);
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("İstek gönderilemedi. Lütfen tekrar deneyin.");
+        // fetch() itself rejected (offline, DNS, dropped connection, CORS) —
+        // the thrown TypeError's English message must never reach the UI.
+        setError("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.");
       }
     } finally {
       setLoading(false);
@@ -86,6 +88,7 @@ export default function ForgotPasswordPage() {
                 id="unuttum-eposta"
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ornek@sirket.com"

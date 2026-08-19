@@ -81,6 +81,11 @@ function formatDateTime(value?: string | null): string | null {
 function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
   const isImage = Boolean(item.media_mime?.startsWith("image/"));
   const isPdf = item.media_mime === "application/pdf";
+  // Any other mime with has_media (e.g. a plain-text upload, an accepted
+  // /extract/file type per 06_API_CONTRACTS.md §4.7) still needs a way to
+  // open/download the original — falls back to the same download-on-demand
+  // button used for PDFs instead of silently rendering nothing.
+  const isOtherDownloadable = item.has_media && !isImage && !isPdf;
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
@@ -118,7 +123,9 @@ function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
     []
   );
 
-  const openPdf = async () => {
+  // Used for both PDFs and the generic "other" fallback — either way the
+  // file is fetched as an authenticated blob and opened in a new tab.
+  const openFile = async () => {
     setPdfError(null);
     if (pdfUrlRef.current) {
       window.open(pdfUrlRef.current, "_blank", "noopener");
@@ -170,16 +177,18 @@ function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
     );
   }
 
-  if (isPdf) {
+  if (isPdf || isOtherDownloadable) {
+    const label = isPdf ? "PDF'yi Görüntüle" : "Belgeyi Görüntüle / İndir";
+    const loadingLabel = isPdf ? "PDF hazırlanıyor…" : "Belge hazırlanıyor…";
     return (
       <div className="space-y-2">
         <button
           type="button"
-          onClick={openPdf}
+          onClick={openFile}
           disabled={pdfLoading}
           className="btn btn-quiet text-xs px-4 py-2"
         >
-          {pdfLoading ? "PDF hazırlanıyor…" : "PDF'yi Görüntüle"}
+          {pdfLoading ? loadingLabel : label}
         </button>
         {pdfError && <p className="text-[11px] text-err">{pdfError}</p>}
       </div>
@@ -313,7 +322,18 @@ function EvidenceCard({
             <button
               type="button"
               disabled={deciding}
-              onClick={() => onDecide(item, "rejected", note)}
+              onClick={() => {
+                // Reject is the higher-cost mistake: it can hide legitimate
+                // evidence from an employer, and once decided there is no
+                // in-app way to flip it back to pending.
+                if (
+                  window.confirm(
+                    "Bu kanıtı reddetmek istediğinize emin misiniz? Reddedilen kanıt, aday yeniden yüklemedikçe raporda görünmez."
+                  )
+                ) {
+                  onDecide(item, "rejected", note);
+                }
+              }}
               className="flex-1 py-2.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
               {deciding ? "Kaydediliyor…" : "Reddet"}
@@ -422,11 +442,13 @@ export default function ModerationPanel() {
 
   useEffect(() => {
     if (!isAdmin) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab-change, the standard data-load pattern used throughout this app
     fetchList(activeTab);
   }, [isAdmin, activeTab, fetchList]);
 
   useEffect(() => {
     if (!isAdmin) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount, the standard data-load pattern used throughout this app
     refreshCounts();
   }, [isAdmin, refreshCounts]);
 

@@ -5,9 +5,12 @@ import Link from "next/link";
 import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
   getApplications,
+  getMyJobs,
   createJob,
+  updateJob,
   updateApplicationStatus,
   JobApplication,
+  JobPosting,
   ProfessionCategory,
   ApiError,
 } from "@/lib/api";
@@ -20,8 +23,15 @@ export default function EmployerDashboard() {
   const isCandidate = user?.role === "candidate";
 
   const [applications, setApplications] = useState<JobApplication[]>([]);
+  const [jobs, setJobs] = useState<JobPosting[]>([]);
+  const [jobFilter, setJobFilter] = useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Application ids with an accept/decline PATCH currently in flight — used
+  // to disable just that card's buttons instead of the whole list.
+  const [decidingIds, setDecidingIds] = useState<Set<number>>(new Set());
+  // Job ids with a status-change PATCH currently in flight.
+  const [updatingJobIds, setUpdatingJobIds] = useState<Set<number>>(new Set());
 
   // New Job Form State
   const [jobTitle, setJobTitle] = useState("");
@@ -38,10 +48,14 @@ export default function EmployerDashboard() {
     try {
       setLoading(true);
       setError(null);
-      // Only applications render here; the jobs roster was fetched into
-      // state nothing ever read.
-      const appsData = await getApplications();
+      // Jobs are fetched alongside applications so each application card can
+      // show which posting it belongs to, and so the employer can see their
+      // own postings (including drafts/closed) below the creation form.
+      // getMyJobs() is ownership-scoped server-side, unlike the public,
+      // active-only GET /jobs.
+      const [appsData, jobsData] = await Promise.all([getApplications(), getMyJobs()]);
       setApplications(appsData);
+      setJobs(jobsData);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -58,6 +72,7 @@ export default function EmployerDashboard() {
     // runs *after* this one; fetching while it is still loading would fire
     // the requests without an Authorization header and 401.
     if (authLoading) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/auth-ready, the standard data-load pattern used throughout this app
     fetchData();
   }, [authLoading]);
 
@@ -65,6 +80,7 @@ export default function EmployerDashboard() {
   // but never overwrite something the employer already typed.
   useEffect(() => {
     if (user?.email) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- deriving a one-time default from `user` is the sync point itself, guarded by the prev-value check above
       setCompanyName((prev) => prev || user.email.split("@")[0] + " Şirketi");
     }
   }, [user]);
@@ -97,9 +113,25 @@ export default function EmployerDashboard() {
   };
 
   const handleUpdateStatus = async (appId: number, newStatus: "accepted" | "declined") => {
+    // Guard against a double-click firing a second PATCH while the first is
+    // still in flight.
+    if (decidingIds.has(appId)) return;
+
+    // The backend treats this decision as irreversible (409 once already
+    // accepted/declined) — make the employer confirm before it fires.
+    const confirmText =
+      newStatus === "accepted"
+        ? "Bu başvuruyu kabul etmek istediğinize emin misiniz? Bu karar daha sonra geri alınamaz."
+        : "Bu başvuruyu reddetmek istediğinize emin misiniz? Bu karar daha sonra geri alınamaz.";
+    if (!window.confirm(confirmText)) return;
+
+    setDecidingIds((prev) => new Set(prev).add(appId));
+    setError(null);
     try {
-      await updateApplicationStatus(appId, newStatus);
-      await fetchData();
+      const updated = await updateApplicationStatus(appId, newStatus);
+      // Update just this card in place — a full refetch would blank the
+      // whole scrollable panel and reset scroll position on every decision.
+      setApplications((cur) => cur.map((a) => (a.id === appId ? { ...a, ...updated } : a)));
     } catch (err: unknown) {
       // The message never contained "409" — the status lives on ApiError.
       if (err instanceof ApiError && err.status === 409) {
@@ -109,8 +141,65 @@ export default function EmployerDashboard() {
       } else {
         setError("Başvuru durumu güncellenemedi.");
       }
+    } finally {
+      setDecidingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(appId);
+        return next;
+      });
     }
   };
+
+  const handleToggleJobStatus = async (job: JobPosting) => {
+    if (!job.id || updatingJobIds.has(job.id)) return;
+    const closing = job.status === "active";
+    const confirmText = closing
+      ? "Bu ilanı kapatmak istediğinize emin misiniz? Kapatılan ilanlara yeni başvuru yapılamaz."
+      : "Bu ilanı tekrar yayına almak istediğinize emin misiniz?";
+    if (!window.confirm(confirmText)) return;
+
+    setUpdatingJobIds((prev) => new Set(prev).add(job.id!));
+    setError(null);
+    try {
+      const updated = await updateJob(job.id, { status: closing ? "closed" : "active" });
+      setJobs((cur) => cur.map((j) => (j.id === job.id ? { ...j, ...updated } : j)));
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("İlan güncellenemedi.");
+      }
+    } finally {
+      setUpdatingJobIds((prev) => {
+        const next = new Set(prev);
+        next.delete(job.id!);
+        return next;
+      });
+    }
+  };
+
+  // job_id -> title lookup so each application card can show which posting
+  // it belongs to, instead of only the application id.
+  const jobTitleById = new Map<number, string>();
+  jobs.forEach((j) => {
+    if (j.id !== undefined) jobTitleById.set(j.id, j.title);
+  });
+  const jobTitleFor = (jobId: number) => jobTitleById.get(jobId) || `İlan #${jobId}`;
+
+  // Distinct postings that actually have applications, for the filter
+  // dropdown — built from applications rather than `jobs` so it still works
+  // for a posting that no longer appears in the (active-only) jobs list.
+  const jobOptions = Array.from(new Set(applications.map((a) => a.job_id))).map((id) => ({
+    id,
+    title: jobTitleFor(id),
+  }));
+
+  const visibleApplications =
+    jobFilter === "all" ? applications : applications.filter((a) => a.job_id === jobFilter);
+
+  // The employer's own postings, including drafts/closed — getMyJobs() is
+  // already scoped server-side to the authenticated account.
+  const myJobs = jobs;
 
   // Role Guard Notice if a Candidate accidentally lands here
   if (isCandidate) {
@@ -314,6 +403,60 @@ export default function EmployerDashboard() {
               </button>
             </form>
           </div>
+
+          {/* Employer's own postings, including drafts/closed. A posting can
+              be closed here to stop new applications once a role is filled. */}
+          <div className="card p-7 space-y-4">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h2 className="text-base font-semibold text-fg tracking-tight">
+                İlanlarım
+              </h2>
+              <span className="badge bg-raised text-fg-soft border-line-strong tabular-nums">
+                {myJobs.length} ilan
+              </span>
+            </div>
+            {loading ? (
+              <p className="text-xs text-fg-mute">İlanlar yükleniyor…</p>
+            ) : myJobs.length === 0 ? (
+              <p className="text-xs text-fg-mute">
+                Henüz yayınlanmış bir ilanınız yok. Yukarıdaki formla ilk ilanınızı oluşturabilirsiniz.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {myJobs.map((j) => {
+                  const isActive = j.status === "active";
+                  const isUpdating = j.id !== undefined && updatingJobIds.has(j.id);
+                  return (
+                    <div
+                      key={j.id}
+                      className="flex items-center justify-between gap-3 bg-well border border-line rounded-md px-3.5 py-2.5"
+                    >
+                      <span className="text-xs font-medium text-fg truncate">{j.title}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={
+                            isActive
+                              ? "badge bg-ok/10 text-ok border-ok/30 !text-[10px]"
+                              : "badge bg-raised text-fg-mute border-line-strong !text-[10px]"
+                          }
+                        >
+                          {isActive ? "Yayında" : j.status === "closed" ? "Kapalı" : "Taslak"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleJobStatus(j)}
+                          disabled={isUpdating}
+                          className="text-[11px] font-semibold text-fg-soft hover:text-fg underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isUpdating ? "…" : isActive ? "Kapat" : "Yeniden yayınla"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Active Applications Review & Approval Panel (2 Cols) */}
@@ -324,16 +467,44 @@ export default function EmployerDashboard() {
                 Gelen Başvurular
               </h2>
               <span className="badge bg-raised text-fg-soft border-line-strong tabular-nums">
-                {applications.length} başvuru
+                {visibleApplications.length} başvuru
               </span>
             </div>
 
+            {jobOptions.length > 1 && (
+              <div>
+                <label
+                  htmlFor="basvuru-ilan-filtre"
+                  className="block text-[11px] font-semibold text-fg-mute uppercase tracking-wider mb-1.5"
+                >
+                  Pozisyona göre filtrele
+                </label>
+                <select
+                  id="basvuru-ilan-filtre"
+                  value={jobFilter}
+                  onChange={(e) =>
+                    setJobFilter(e.target.value === "all" ? "all" : Number(e.target.value))
+                  }
+                  className="field text-xs"
+                >
+                  <option value="all">Tüm ilanlar</option>
+                  {jobOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {loading ? (
               <p className="text-xs text-fg-mute">Başvurular yükleniyor…</p>
-            ) : applications.length === 0 ? (
+            ) : visibleApplications.length === 0 ? (
               <div className="text-center py-8 space-y-2">
                 <p className="text-xs text-fg-mute">
-                  Henüz ilanlarınıza başvuran aday bulunmuyor.
+                  {applications.length === 0
+                    ? "Henüz ilanlarınıza başvuran aday bulunmuyor."
+                    : "Bu ilana ait başvuru bulunmuyor."}
                 </p>
                 <p className="text-[11px] text-fg-mute">
                   Adaylar başvurdukça burada listelenecek.
@@ -341,7 +512,7 @@ export default function EmployerDashboard() {
               </div>
             ) : (
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                {applications.map((app) => (
+                {visibleApplications.map((app) => (
                   <div key={app.id} className="card card-lift bg-well p-5 space-y-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold text-fg tabular-nums">
@@ -363,6 +534,14 @@ export default function EmployerDashboard() {
                           : "Değerlendiriliyor"}
                       </span>
                     </div>
+
+                    {/* Which posting this application belongs to — without this
+                        an employer with more than one active listing cannot
+                        tell what they are accepting or declining. */}
+                    <p className="text-[11px] text-fg-mute -mt-2">
+                      Pozisyon:{" "}
+                      <span className="text-fg-soft font-medium">{jobTitleFor(app.job_id)}</span>
+                    </p>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center gap-3 text-xs">
@@ -387,18 +566,21 @@ export default function EmployerDashboard() {
                       </div>
 
                       {/* AI standout signals — the recruiter reads the highlight
-                          before opening the full report. */}
+                          before opening the full report. Styled and labelled
+                          distinctly from the ok/green "Kabul edildi" badge so
+                          it reads as an AI suggestion to check, not a
+                          completed human verification. */}
                       {app.standout_traits && app.standout_traits.length > 0 && (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[10px] uppercase tracking-wider text-brand/80 font-semibold">
-                            Öne çıkan
+                            Yapay zekâ: öne çıkan
                           </span>
                           {app.standout_traits.map((t) => (
                             <span
                               key={t}
-                              className="badge bg-ok/10 text-ok border-ok/25 !text-[10px] !py-0.5"
+                              className="badge bg-brand/10 text-brand border-brand/25 !text-[10px] !py-0.5"
                             >
-                              ✓ {t}
+                              {t}
                             </span>
                           ))}
                         </div>
@@ -417,15 +599,17 @@ export default function EmployerDashboard() {
                         <div className="flex items-center gap-2 pt-2 border-t border-line">
                           <button
                             onClick={() => handleUpdateStatus(app.id!, "accepted")}
-                            className="flex-1 py-1.5 bg-ok/10 hover:bg-ok/20 border border-ok/30 text-ok rounded-md text-[11px] font-semibold transition-colors"
+                            disabled={decidingIds.has(app.id!)}
+                            className="flex-1 py-1.5 bg-ok/10 hover:bg-ok/20 border border-ok/30 text-ok rounded-md text-[11px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Kabul Et
+                            {decidingIds.has(app.id!) ? "Kaydediliyor…" : "Kabul Et"}
                           </button>
                           <button
                             onClick={() => handleUpdateStatus(app.id!, "declined")}
-                            className="flex-1 py-1.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-[11px] font-semibold transition-colors"
+                            disabled={decidingIds.has(app.id!)}
+                            className="flex-1 py-1.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-[11px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Reddet
+                            {decidingIds.has(app.id!) ? "Kaydediliyor…" : "Reddet"}
                           </button>
                         </div>
                       ) : (

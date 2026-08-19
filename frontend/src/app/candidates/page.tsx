@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getCandidates, createCandidate, Candidate } from "@/lib/api";
+import { getCandidates, createCandidate, Candidate, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { MagnifierDoc } from "@/components/illustrations";
 
@@ -16,14 +16,22 @@ export default function CandidatesPage() {
   const [newName, setNewName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
 
   const fetchCandidates = async () => {
     try {
       setLoading(true);
+      // Clear any stale error from a previous failed attempt up front — a
+      // retry that succeeds must not still short-circuit to the old message.
+      setError(null);
+      setErrorStatus(null);
       const data = await getCandidates();
       setCandidates(data);
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+        setErrorStatus(err.status);
+      } else if (err instanceof Error) {
         setError(err.message);
       } else {
         setError("Bir hata oluştu.");
@@ -38,6 +46,7 @@ export default function CandidatesPage() {
     // runs *after* this one; fetching while it is still loading would fire
     // the request without an Authorization header and 401.
     if (authLoading) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/auth-ready, the standard data-load pattern used throughout this app
     fetchCandidates();
   }, [authLoading]);
 
@@ -105,7 +114,24 @@ export default function CandidatesPage() {
             // A 401 here previously fell through to "Kayıtlı aday
             // bulunamadı." — indistinguishable from a genuinely empty list,
             // so an anonymous visitor never learned they needed to log in.
-            <p className="text-fg-mute text-sm">{error}</p>
+            // Now it also gets a concrete way forward instead of a dead end.
+            <div className="space-y-3">
+              <p className="text-fg-mute text-sm">{error}</p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => fetchCandidates()}
+                  className="btn btn-quiet text-xs px-4 py-2"
+                >
+                  Tekrar dene
+                </button>
+                {errorStatus === 401 && (
+                  <Link href="/login" className="btn btn-brand text-xs px-4 py-2">
+                    Giriş yap
+                  </Link>
+                )}
+              </div>
+            </div>
           ) : candidates.length === 0 ? (
             <p className="text-fg-mute text-sm">Kayıtlı aday bulunamadı.</p>
           ) : (

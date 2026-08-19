@@ -92,6 +92,48 @@ def test_full_reset_flow(keyed_client, outbox):
     assert new.status_code == 200, new.text
 
 
+def test_reset_invalidates_sessions_issued_before_it(keyed_client, outbox):
+    """
+    The whole point of resetting a password is usually "I think someone else
+    has access." A JWT obtained before the reset must stop working the
+    moment the reset completes — otherwise a stolen token keeps full access
+    for up to 24h after the victim "secures" the account.
+    """
+    email = "eski-oturum@example.com"
+    _register(keyed_client, email)
+    outbox.clear()
+
+    login = keyed_client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "eski-sifre-123"}
+    )
+    assert login.status_code == 200, login.text
+    pre_reset_token = login.json()["access_token"]
+    pre_reset_headers = {"Authorization": f"Bearer {pre_reset_token}"}
+
+    # The pre-reset token works before the reset.
+    assert keyed_client.get("/api/v1/auth/me", headers=pre_reset_headers).status_code == 200
+
+    keyed_client.post("/api/v1/auth/forgot-password", json={"email": email})
+    token = _token_from_email(outbox[0][2])
+    resp = keyed_client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "yeni-sifre-456"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The token minted before the reset must now be dead...
+    stale = keyed_client.get("/api/v1/auth/me", headers=pre_reset_headers)
+    assert stale.status_code == 401, stale.text
+
+    # ...while a freshly issued one (post-reset password) works fine.
+    fresh_login = keyed_client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "yeni-sifre-456"}
+    )
+    assert fresh_login.status_code == 200, fresh_login.text
+    fresh_headers = {"Authorization": f"Bearer {fresh_login.json()['access_token']}"}
+    assert keyed_client.get("/api/v1/auth/me", headers=fresh_headers).status_code == 200
+
+
 def test_reset_token_is_single_use(keyed_client, outbox):
     email = "tek-kullanim@example.com"
     _register(keyed_client, email)

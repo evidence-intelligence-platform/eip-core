@@ -38,7 +38,19 @@ def extract_text_or_flag_scanned(pdf_bytes: bytes) -> tuple[str, bool]:
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
         if reader.is_encrypted:
-            raise ValueError("Parola korumalı PDF okunamıyor.")
+            # pypdf flags ANY encryption dictionary as "encrypted", including
+            # the very common owner-password-only case (print/edit
+            # restrictions on an official diploma or certificate) where the
+            # user password is blank and the file opens with no prompt in
+            # Acrobat or Chrome. Try the empty password before rejecting —
+            # only a document that actually needs a password a viewer would
+            # have to type is genuinely unreadable here.
+            try:
+                decrypted = reader.decrypt("")
+            except Exception:
+                decrypted = 0
+            if not decrypted:
+                raise ValueError("Parola korumalı PDF okunamıyor.")
 
         text = ""
         for page in reader.pages:

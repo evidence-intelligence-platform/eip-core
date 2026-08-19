@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { ApiError } from "@/lib/api";
 
 export default function EmployerRegisterPage() {
   const [email, setEmail] = useState("");
@@ -17,11 +18,31 @@ export default function EmployerRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { register } = useAuth();
+  const { user, loading: authLoading, register } = useAuth();
   const router = useRouter();
+
+  // A signed-in employer (or any signed-in user) landing here — e.g. via the
+  // "İşveren kaydına geçin" link from the candidate page, or a stale bookmark
+  // — should not see a fresh signup form: submitting it would silently create
+  // a new account and overwrite their current session. Mirrors register/aday.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(
+        user.role === "admin"
+          ? "/admin/moderation"
+          : user.role === "employer"
+          ? "/employer/dashboard"
+          : "/candidate/hub"
+      );
+    }
+  }, [authLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (companySize === "") {
+      setError("Lütfen çalışan sayısı seçin.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -36,10 +57,12 @@ export default function EmployerRegisterPage() {
       });
       router.push("/employer/dashboard");
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Kayıt tamamlanamadı. Lütfen bilgilerinizi kontrol edin.");
+        // fetch() itself rejected (offline, DNS, dropped connection, CORS) —
+        // the thrown TypeError's English message must never reach the UI.
+        setError("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.");
       }
     } finally {
       setLoading(false);
@@ -82,6 +105,7 @@ export default function EmployerRegisterPage() {
             id="kayit-ad-soyad"
             type="text"
             required
+            autoComplete="name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Ayşe Yılmaz"
@@ -100,6 +124,7 @@ export default function EmployerRegisterPage() {
             id="kayit-eposta"
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ayse@gmail.com"
@@ -126,6 +151,7 @@ export default function EmployerRegisterPage() {
               id="kayit-sirket"
               type="text"
               required
+              autoComplete="organization"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               placeholder="Örn: Acme Yazılım A.Ş."
@@ -158,7 +184,7 @@ export default function EmployerRegisterPage() {
 
           <div>
             <span className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">
-              Çalışan Sayısı
+              Çalışan Sayısı <span className="text-err">*</span>
             </span>
             <div className="grid grid-cols-4 gap-2">
               {(["1-5", "6-20", "21-50", "50+"] as const).map((band) => (
@@ -191,6 +217,7 @@ export default function EmployerRegisterPage() {
                 id="kayit-kurumsal"
                 type="email"
                 required
+                autoComplete="email"
                 value={companyEmail}
                 onChange={(e) => setCompanyEmail(e.target.value)}
                 placeholder="ik@sirket.com"
@@ -215,6 +242,7 @@ export default function EmployerRegisterPage() {
             type="password"
             required
             minLength={8}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"

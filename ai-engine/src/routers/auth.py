@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlmodel import Session, select
 
 from src.db.database import get_session
@@ -29,7 +29,7 @@ from src.db.models import (
 )
 from src.rate_limit import limiter
 from src.security.auth import verify_api_key
-from src.security.jwt import create_access_token, get_current_user_payload, hash_password, verify_password
+from src.security.jwt import create_user_access_token, get_current_user_payload, hash_password, verify_password
 from src.services.audit import anonymize_identifier, record_audit
 from src.services.email_service import password_reset_email, send_email, welcome_email
 from src.services.storage import delete_upload
@@ -43,6 +43,13 @@ RESET_TOKEN_TTL_MINUTES = 30
 # no new token, no new e-mail. Keeps a stuck user from mailbombing themselves
 # (or an attacker from mailbombing someone else) within the rate limit.
 RESET_REQUEST_COOLDOWN_SECONDS = 60
+
+# A syntactically valid PBKDF2 hash that no real password will ever match.
+# login_user verifies against this when the e-mail doesn't exist, so the
+# 100,000-iteration PBKDF2 call always runs — without it, "unknown e-mail"
+# answers measurably faster than "wrong password for a real account", an
+# account-enumeration timing side-channel.
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 def _hash_reset_token(token: str) -> str:
@@ -68,7 +75,7 @@ COMPANY_SIZE_BANDS = ("1-5", "6-20", "21-50", "50+")
 class RegisterRequest(BaseModel):
     # Personal e-mail for everyone — never a company address.
     email: EmailStr = Field(..., description="Personal e-mail address")
-    password: str = Field(..., min_length=8, description="Password (min 8 chars)")
+    password: str = Field(..., description="Password (min 8 chars)")
     # "admin" is deliberately not selectable: the endpoint is public, so
     # anyone could have granted themselves administrator rights.
     role: Literal["employer", "candidate"] = Field("candidate", description="User role")
@@ -81,6 +88,19 @@ class RegisterRequest(BaseModel):
     company_email: EmailStr | None = Field(
         None, description="Employer: corporate e-mail (required when size > 5)"
     )
+
+    @field_validator("password")
+    @classmethod
+    def _password_min_length(cls, value: str) -> str:
+        # Pydantic's built-in "string_too_short" error is English and
+        # developer-shaped ({"type": "string_too_short", "msg": "String
+        # should have at least 8 characters", ...}) — a short password is the
+        # single most common validation failure a non-technical candidate hits,
+        # on the very first screen they touch. Same Turkish tone as the
+        # hand-written checks in _validate_employer_profile below.
+        if len(value) < 8:
+            raise ValueError("Şifre en az 8 karakter olmalıdır.")
+        return value
 
 
 def _validate_employer_profile(data: "RegisterRequest") -> None:
@@ -164,7 +184,7 @@ def register_user(
         # stops that reply from becoming a bulk enumeration oracle.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User with email '{data.email}' already exists."
+            detail=f"'{data.email}' adresiyle zaten bir hesap var. Giriş yapmayı deneyin."
         )
 
     hashed_pw = hash_password(data.password)
@@ -220,7 +240,7 @@ def register_user(
     subject, html = welcome_email(data.full_name or data.email.split("@")[0])
     background_tasks.add_task(send_email, user.email, subject, html)
 
-    token = create_access_token({"sub": user.email, "user_id": user.id, "role": user.role})
+    token = create_user_access_token(user)
     return AuthTokenResponse(
         access_token=token,
         email=user.email,
@@ -244,14 +264,19 @@ def login_user(
 ) -> AuthTokenResponse:
     """Authenticates credentials and issues a JWT token."""
     user = session.exec(select(UserAccount).where(UserAccount.email == data.email)).first()
-    if not user or not verify_password(data.password, user.hashed_password):
+    # Always run the PBKDF2 verification, even when there's no account to
+    # check against — see _DUMMY_PASSWORD_HASH above.
+    password_ok = verify_password(
+        data.password, user.hashed_password if user else _DUMMY_PASSWORD_HASH
+    )
+    if not user or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
+            detail="E-posta veya şifre hatalı.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token({"sub": user.email, "user_id": user.id, "role": user.role})
+    token = create_user_access_token(user)
     return AuthTokenResponse(
         access_token=token,
         email=user.email,
@@ -272,7 +297,7 @@ def get_me(
     email = payload.get("sub")
     user = session.exec(select(UserAccount).where(UserAccount.email == email)).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
     candidate = session.exec(
         select(Candidate).where(Candidate.user_id == user.id)
@@ -294,10 +319,30 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    token: str = Field(..., min_length=16, description="Reset token from the e-mailed link")
+    token: str = Field(..., description="Reset token from the e-mailed link")
     # Same policy as registration: the reset path must not accept a password
     # that /register would reject.
-    new_password: str = Field(..., min_length=8, description="New password (min 8 chars)")
+    new_password: str = Field(..., description="New password (min 8 chars)")
+
+    @field_validator("token")
+    @classmethod
+    def _token_min_length(cls, value: str) -> str:
+        # A too-short token can never match a real reset link — same Turkish
+        # message reset_password itself uses for an invalid/unknown token, so
+        # the client can't tell shape-invalid apart from merely-wrong.
+        if len(value) < 16:
+            raise ValueError(
+                "Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş. "
+                "Lütfen yeni bir bağlantı isteyin."
+            )
+        return value
+
+    @field_validator("new_password")
+    @classmethod
+    def _new_password_min_length(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("Şifre en az 8 karakter olmalıdır.")
+        return value
 
 
 class MessageResponse(BaseModel):
@@ -507,7 +552,7 @@ def delete_me(
     email = payload.get("sub")
     user = session.exec(select(UserAccount).where(UserAccount.email == email)).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
     user_id, user_role = user.id, user.role
     media_paths: list[str] = []

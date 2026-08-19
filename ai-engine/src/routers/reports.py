@@ -64,6 +64,31 @@ _APPROVED = "approved"
 # placeholder rather than a null the UI would render as a blank employer.
 _UNKNOWN_COMPANY = "Şirket belirtilmemiş"
 
+# ExtractionResult.confidence_score's own field description: "Below 85 should
+# require human review." Nothing upstream currently routes a low-confidence
+# VERIFIED/CONTRADICTION text extraction into the moderation queue, so a
+# candidate, employer, or admin would otherwise never learn the score moved
+# on an uncertain call — a straight Uncertainty Reporting violation. Until
+# that routing exists, the report itself says so.
+_CONFIDENCE_REVIEW_THRESHOLD = 85
+
+# Shown to every reader (candidate, employer, admin) when at least one
+# counted row's confidence sits below the threshold above — the AI is
+# uncertain, and a human has not yet re-checked that specific row.
+_LOW_CONFIDENCE_NOTE = (
+    "Bu adayın onaylı kanıtlarından bazılarında modelin güven skoru düşük; "
+    "bu satırlar henüz ayrıca insan incelemesinden geçmedi ve sonucu "
+    "temkinli değerlendirmenizi öneririz."
+)
+
+# Shown to every reader when the candidate has evidence still sitting in the
+# moderation queue — without revealing what it is — so a low or unchanged
+# score is not mistaken for "nothing was submitted".
+_PENDING_EVIDENCE_NOTE = (
+    "Bu adayın incelenmekte olan ek belgeleri var; onaylandığında uyum "
+    "oranı güncellenebilir."
+)
+
 
 class ReportItem(BaseModel):
     """One evidence row as it appears in the report matrix."""
@@ -78,6 +103,10 @@ class ReportItem(BaseModel):
     # arithmetic inspectable is the whole point: a candidate must be able to
     # see that their pending upload is the reason the percentage has not moved.
     counted: bool
+    # True for a counted row whose model confidence sits below the
+    # documented human-review threshold (see _CONFIDENCE_REVIEW_THRESHOLD) —
+    # it was auto-approved as text evidence but the model itself was not sure.
+    low_confidence: bool
 
 
 class ExplainabilityReportRead(BaseModel):
@@ -97,6 +126,14 @@ class ExplainabilityReportRead(BaseModel):
     verified_count: int
     counted_count: int
     items: list[ReportItem]
+    # Transparency flags, deliberately readable by the employer too (no
+    # document content leaks — just "something else is happening here"), so
+    # a low or 0% score is never mistaken for "the candidate submitted
+    # nothing" or "the AI is certain this candidate falls short".
+    has_pending_evidence: bool
+    has_low_confidence_evidence: bool
+    pending_evidence_note: str | None = None
+    low_confidence_note: str | None = None
 
 
 def _review_status(evidence: Evidence) -> str:
@@ -259,6 +296,12 @@ def get_application_report(
     admins see every row, with the unreviewed ones marked counted=false. The
     score itself is identical for all three — only approved rows ever enter it,
     so nobody is quoted a percentage the employer cannot see.
+
+    has_pending_evidence and has_low_confidence_evidence are the one exception
+    to "employer sees approved rows only": they are booleans, not document
+    content, and exist so a low or 0% score is never mistaken for "this
+    candidate submitted nothing" (pending) or "the AI is sure this candidate
+    falls short" (a counted row the model itself was not confident about).
     """
     application = session.get(JobApplication, application_id)
     if not application:
@@ -307,6 +350,14 @@ def get_application_report(
             # The denominator, stated once: a row counts when a human has
             # cleared it. Pending and rejected uploads describe nothing yet.
             counted=_review_status(e) == _APPROVED,
+            # Counted rows are auto-approved when the source is plain text
+            # (see Evidence.review_status default); a human has not looked at
+            # this specific verdict if the model itself scored it low.
+            low_confidence=(
+                _review_status(e) == _APPROVED
+                and e.confidence_score is not None
+                and e.confidence_score < _CONFIDENCE_REVIEW_THRESHOLD
+            ),
         )
         for e in evidences
     ]
@@ -314,6 +365,9 @@ def get_application_report(
     counted_count = sum(1 for item in items if item.counted)
     verified_count = sum(1 for item in items if item.counted and item.status == "VERIFIED")
     evidence_score = _evidence_score(verified_count, counted_count)
+
+    has_pending_evidence = any(item.review_status == "pending" for item in items)
+    has_low_confidence_evidence = any(item.counted and item.low_confidence for item in items)
 
     company = session.get(Company, job.company_id) if job.company_id else None
     company_name = company.name if company and company.name else _UNKNOWN_COMPANY
@@ -352,4 +406,8 @@ def get_application_report(
         verified_count=verified_count,
         counted_count=counted_count,
         items=visible_items,
+        has_pending_evidence=has_pending_evidence,
+        has_low_confidence_evidence=has_low_confidence_evidence,
+        pending_evidence_note=_PENDING_EVIDENCE_NOTE if has_pending_evidence else None,
+        low_confidence_note=_LOW_CONFIDENCE_NOTE if has_low_confidence_evidence else None,
     )

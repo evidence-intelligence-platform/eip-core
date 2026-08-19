@@ -72,6 +72,13 @@ function formatGeneratedAt(iso: string): string | null {
   return at.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
 }
 
+// The engine's confidence_score is an int 0-100; a value of 1 means 1%, not a
+// 0-1 float to be scaled up. Same rule as admin/moderation and candidate/hub.
+function formatConfidence(score: number | null): string | null {
+  if (typeof score !== "number" || Number.isNaN(score)) return null;
+  return `%${Math.round(score)}`;
+}
+
 export default function ReportPage({ params }: { params: Promise<{ id: string }> }) {
   // The route segment is the application id: the same person applying to two
   // postings is judged against two sets of requirements, so keying the report
@@ -105,6 +112,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     // the request without an Authorization header and 401.
     if (authLoading) return;
     if (applicationId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/id-change, the standard data-load pattern used throughout this app
       fetchReport();
     }
   }, [authLoading, applicationId]);
@@ -190,8 +198,10 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             <div className="col-span-2 space-y-3 flex flex-col justify-center">
               <h3 className="text-sm font-semibold text-fg-soft uppercase tracking-wider">Özet Değerlendirme</h3>
               <p className="text-sm text-fg-soft leading-relaxed">
-                {report.counted_count === 0
+                {report.items.length === 0
                   ? `Bu başvuru için henüz değerlendirilmiş bir belge bulunmuyor. Aday panelinden özgeçmiş, sertifika veya belge yüklenebilir.`
+                  : report.counted_count === 0
+                  ? `Belgeleriniz incelemede; onaylandığında bu bölüm güncellenecek.`
                   : report.evidence_score >= 50
                   ? `${candidateName}, ${report.job_title} ilanının temel gereksinimleri için doğrulanabilir belge sundu. Değerlendirme yalnızca sunulan kanıtlara dayanmaktadır.`
                   : `${candidateName} için bazı gereksinimlerde belge yetersiz kaldı veya doğrulanamadı. Görüşmede bu başlıkların sorulması önerilir.`}
@@ -249,6 +259,15 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                         >
                           {e.status === "VERIFIED" ? "Doğrulandı" : e.status === "CONTRADICTION" ? "Çelişki" : "Yetersiz Belge"}
                         </span>
+                        {(e.status === "VERIFIED" || e.status === "CONTRADICTION") &&
+                          formatConfidence(e.confidence_score) && (
+                            <span
+                              className="text-[11px] font-mono text-fg-mute tabular-nums"
+                              title="Yapay zekanın bu değerlendirmedeki güven skoru"
+                            >
+                              Güven skoru: {formatConfidence(e.confidence_score)}
+                            </span>
+                          )}
                         {REVIEW_BADGES[e.review_status] && (
                           <span
                             className={`badge uppercase tracking-wider ${REVIEW_BADGES[e.review_status].className}`}

@@ -34,6 +34,7 @@ Design constraints:
     recipients go through _mask_recipient() on all paths, success included.
 """
 
+import html
 import json
 import logging
 import os
@@ -215,12 +216,17 @@ def password_reset_email(reset_link: str) -> tuple[str, str]:
 def welcome_email(display_name: str) -> tuple[str, str]:
     """(subject, html) for the post-registration welcome message."""
     subject = "EIP'ye hoş geldiniz"
-    html = _layout(
-        f"Hoş geldiniz, {display_name}",
+    # display_name is caller-supplied (RegisterRequest.full_name) with no
+    # content restrictions: escape before interpolating into the message HTML,
+    # or a registrant's own name becomes a markup-injection vector delivered
+    # from the platform's trusted sending domain.
+    safe_name = html.escape(display_name)
+    message_html = _layout(
+        f"Hoş geldiniz, {safe_name}",
         """\
   <p style="font-size:14px;line-height:1.6">Hesabınız oluşturuldu. EIP, başvurularınızı belgeye dayalı
   kanıtlarla değerlendiren bir platformdur — beyan değil, kanıt konuşur.</p>
   <p style="font-size:14px;line-height:1.6">Belgeleriniz yalnızca sizin onayınızla işlenir; dilediğiniz an
   hesabınızı ve tüm verilerinizi Hesap sayfasından kalıcı olarak silebilirsiniz.</p>""",
     )
-    return subject, html
+    return subject, message_html

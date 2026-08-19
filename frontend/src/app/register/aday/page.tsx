@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { ApiError } from "@/lib/api";
 
 export default function CandidateRegisterPage() {
   const [email, setEmail] = useState("");
@@ -32,10 +33,12 @@ export default function CandidateRegisterPage() {
       await register(email, password, "candidate", fullName);
       router.push("/candidate/hub");
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Kayıt tamamlanamadı. Lütfen bilgilerinizi kontrol edin.");
+        // fetch() itself rejected (offline, DNS, dropped connection, CORS) —
+        // the thrown TypeError's English message must never reach the UI.
+        setError("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.");
       }
     } finally {
       setLoading(false);
@@ -78,6 +81,7 @@ export default function CandidateRegisterPage() {
             id="kayit-ad-soyad"
             type="text"
             required
+            autoComplete="name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Ayşe Yılmaz"
@@ -96,6 +100,7 @@ export default function CandidateRegisterPage() {
             id="kayit-eposta"
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ayse@gmail.com"
@@ -115,6 +120,7 @@ export default function CandidateRegisterPage() {
             type="password"
             required
             minLength={8}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"

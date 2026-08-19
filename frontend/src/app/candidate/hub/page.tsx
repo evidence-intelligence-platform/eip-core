@@ -17,7 +17,6 @@ import {
   JobPosting,
   JobApplication,
   Evidence,
-  AccomplishmentEntry,
   ProfessionCategory,
   FileAnalysisData,
 } from "@/lib/api";
@@ -45,7 +44,6 @@ export default function CandidateEvidenceHub() {
   const [savingInterests, setSavingInterests] = useState(false);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
-  const [accomplishments, setAccomplishments] = useState<AccomplishmentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,7 +115,7 @@ export default function CandidateEvidenceHub() {
       const isMissingRecord = (r: PromiseSettledResult<unknown>) =>
         r.status === "rejected" && r.reason instanceof ApiError && r.reason.status === 404;
 
-      const failed = [jobsRes, appsRes, evRes].find(
+      const failed = [jobsRes, appsRes, evRes, intRes].find(
         (r) => r.status === "rejected" && !isMissingRecord(r)
       );
       if (failed && failed.status === "rejected") {
@@ -139,6 +137,7 @@ export default function CandidateEvidenceHub() {
     // runs *after* this one; fetching while it is still loading would 401 on
     // getApplications and flash a misleading "giriş yapın" banner.
     if (authLoading) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/auth-ready, the standard data-load pattern used throughout this app
     fetchData();
   }, [authLoading, user]);
 
@@ -152,6 +151,9 @@ export default function CandidateEvidenceHub() {
       return;
     }
     setAnalysisError(null);
+    // A newly picked file has not been through /extract yet — the previous
+    // file's verdict must not linger under the new filename.
+    setAnalysisResult(null);
     setFile(selected);
   };
 
@@ -225,23 +227,32 @@ export default function CandidateEvidenceHub() {
         accConsent
       );
 
-      const newEntry: AccomplishmentEntry = {
-        id: `acc_${Date.now()}`,
-        candidate_external_id: candidateExtId,
-        category: accCategory,
-        title: accTitle,
-        content: accContent,
-        proof_link: accProofLink,
-        verified_by_ai: analysis.success,
-        created_at: new Date().toISOString(),
-      };
-
-      setAccomplishments((prev) => [newEntry, ...prev]);
-      setAccSuccess(
-        analysis.success
-          ? "Deneyiminiz analiz edildi ve profilinize eklendi."
-          : "Deneyiminiz kaydedildi, ancak yapay zeka analizi şu anda tamamlanamadı. Daha sonra tekrar deneyebilirsiniz."
-      );
+      // The /extract response is the same ExtractionResult shape the CV-upload
+      // path reads (status/reasoning/confidence_score/evidence_pointer). A 2xx
+      // reply here can still carry CONTRADICTION or INSUFFICIENT EVIDENCE — that
+      // verdict must reach the candidate, not just a "were you analyzed at all"
+      // boolean. The list below reads the real verdict from `evidences`
+      // (re-fetched just below), so no separate local record is kept here.
+      if (analysis.success) {
+        const verdict = analysis.data as FileAnalysisData | undefined;
+        if (verdict?.status === "VERIFIED") {
+          setAccSuccess("Deneyiminiz doğrulandı ve profilinize eklendi.");
+        } else if (verdict?.status === "CONTRADICTION") {
+          setAccSuccess(
+            "Deneyiminiz eklendi, ancak yapay zeka yazdıklarınızla bir çelişki tespit etti. Aşağıdaki karttan ayrıntıyı görebilirsiniz."
+          );
+        } else if (verdict?.status === "INSUFFICIENT EVIDENCE") {
+          setAccSuccess(
+            "Deneyiminiz eklendi, ancak yapay zeka yeterli kanıt bulamadı. Aşağıdaki karttan ayrıntıyı görebilirsiniz."
+          );
+        } else {
+          setAccSuccess("Deneyiminiz analiz edildi ve profilinize eklendi.");
+        }
+      } else {
+        setAccSuccess(
+          "Deneyiminiz kaydedildi, ancak yapay zeka analizi şu anda tamamlanamadı. Daha sonra tekrar deneyebilirsiniz."
+        );
+      }
 
       setAccTitle("");
       setAccContent("");
@@ -270,6 +281,14 @@ export default function CandidateEvidenceHub() {
   ).length;
   const pendingCount = evidences.filter((e) => e.review_status === "pending").length;
   const rejectedCount = evidences.filter((e) => e.review_status === "rejected").length;
+
+  // "Eklenen Deneyimler" reads straight from the fetched evidences instead of
+  // a local, in-tab-only list: that way a submitted case study — and the AI's
+  // actual verdict on it — survives a refresh, a new tab, or another device,
+  // since it comes back from the server on every fetchData() call.
+  const accomplishmentEvidences = evidences
+    .filter((e) => e.requirement_external_id === "req_general_accomplishment")
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 
   return (
     <div className="relative max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
@@ -509,18 +528,43 @@ export default function CandidateEvidenceHub() {
                 />
               </div>
 
-              <label className="flex items-start gap-3 cursor-pointer p-3.5 bg-brand/5 border border-brand/20 rounded-md">
-                <input
-                  type="checkbox"
-                  checked={accConsent}
-                  onChange={(e) => setAccConsent(e.target.checked)}
-                  className="mt-0.5 accent-[var(--brand)] w-4 h-4 shrink-0"
-                />
-                <span className="text-xs text-fg-soft leading-relaxed">
-                  Yazdığım deneyimin doğru olduğunu ve yapay zeka tarafından
-                  değerlendirilmesini kabul ediyorum.
-                </span>
-              </label>
+              {/* Informed consent — same disclosure as the belge yükleme
+                  formu, since both feed the same consent-gated /extract
+                  endpoint on the same candidate's personal data. */}
+              <div className="p-4 bg-brand/5 border border-brand/20 rounded-md space-y-3">
+                <p className="text-xs font-semibold text-fg">
+                  Onayınızı neden istiyoruz?
+                </p>
+                <p className="text-xs text-fg-soft leading-relaxed">
+                  Yazdığınız deneyim ancak siz izin verirseniz değerlendirilir.
+                  Değerlendirme için yazdığınız metin Google&apos;ın yapay
+                  zeka servisine (yurt dışına) iletilir; sonuç yalnızca
+                  başvurduğunuz işverene gösterilir. Yazdıklarınız reklam için
+                  kullanılmaz, kimseye satılmaz. Ayrıntılar:{" "}
+                  <Link
+                    href="/kvkk"
+                    target="_blank"
+                    className="text-brand underline underline-offset-2 hover:text-brand-strong transition-colors"
+                  >
+                    KVKK aydınlatma metni
+                  </Link>
+                </p>
+                <label className="flex items-start gap-3 cursor-pointer pt-1 border-t border-brand/15">
+                  <input
+                    type="checkbox"
+                    checked={accConsent}
+                    onChange={(e) => setAccConsent(e.target.checked)}
+                    className="mt-1 accent-[var(--brand)] w-4 h-4 shrink-0"
+                  />
+                  <span className="text-xs text-fg-soft leading-relaxed">
+                    <strong className="text-fg">
+                      Yazdığım deneyimin değerlendirilmesine onay veriyorum.
+                    </strong>{" "}
+                    Yazdığım deneyim doğrudur ve bana aittir. Bu onayı
+                    istediğim zaman geri çekebilirim.
+                  </span>
+                </label>
+              </div>
 
               <button
                 type="submit"
@@ -532,37 +576,50 @@ export default function CandidateEvidenceHub() {
             </form>
           </div>
 
-          {/* User Published Case Studies List */}
-          {accomplishments.length > 0 && (
+          {/* Published Case Studies List — sourced from the persisted evidence
+              records, so the AI's real verdict (and the record itself)
+              survives a page reload instead of living only in this tab. */}
+          {accomplishmentEvidences.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-base font-semibold text-fg tracking-tight">
-                Eklenen Deneyimler ({accomplishments.length})
+                Eklenen Deneyimler ({accomplishmentEvidences.length})
               </h3>
               <div className="space-y-3">
-                {accomplishments.map((acc) => (
-                  <div key={acc.id} className="card card-lift p-5 space-y-2">
+                {accomplishmentEvidences.map((ev) => (
+                  <div
+                    key={ev.id ?? `${ev.requirement_external_id}-${ev.created_at}`}
+                    className="card card-lift p-5 space-y-2"
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <h4 className="font-semibold text-fg text-sm">{acc.title}</h4>
+                      <h4 className="font-semibold text-fg text-sm">
+                        Mesleki Deneyim Değerlendirmesi
+                      </h4>
                       <span
                         className={`badge uppercase tracking-wider ${
-                          acc.verified_by_ai
-                            ? "bg-ok/10 text-ok border-ok/30"
-                            : "bg-warn/10 text-warn border-warn/30"
+                          AI_STATUS_STYLES[ev.status] ??
+                          "bg-raised text-fg-soft border-line-strong"
                         }`}
                       >
-                        {acc.verified_by_ai ? "Analiz edildi" : "Analiz bekliyor"}
+                        {AI_STATUS_LABELS[ev.status] ?? ev.status}
                       </span>
                     </div>
-                    <p className="text-xs text-fg-soft leading-relaxed">{acc.content}</p>
-                    {acc.proof_link && (
-                      <a
-                        href={acc.proof_link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-brand hover:text-brand-strong hover:underline font-semibold block pt-1 transition-colors"
-                      >
-                        Kanıt bağlantısı &rarr;
-                      </a>
+                    {ev.reasoning && (
+                      <p className="text-xs text-fg-soft leading-relaxed">{ev.reasoning}</p>
+                    )}
+                    {ev.evidence_pointer && (
+                      <p className="text-[11px] text-fg-mute italic leading-relaxed break-words">
+                        &ldquo;{ev.evidence_pointer}&rdquo;
+                      </p>
+                    )}
+                    {ev.review_status === "pending" && (
+                      <p className="text-[11px] text-warn">
+                        İncelemede — onaylanana kadar işverene gösterilmez.
+                      </p>
+                    )}
+                    {ev.review_status === "rejected" && (
+                      <p className="text-[11px] text-err">
+                        İncelemede onaylanmadı — işverene gösterilmiyor.
+                      </p>
                     )}
                   </div>
                 ))}

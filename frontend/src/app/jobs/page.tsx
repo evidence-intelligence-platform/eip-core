@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
+import { DOCUMENT_ACCEPT, DOCUMENT_HINT, MAX_UPLOAD_BYTES, validateDocument } from "@/lib/uploads";
 import { CATEGORIES, categoryLabel, type CategoryKey } from "@/lib/categories";
 import {
   getJobs,
@@ -12,6 +12,7 @@ import {
   analyzeCandidateFile,
   analyzeCandidateEvidence,
   getMyInterests,
+  getApplications,
   JobPosting,
   type FileAnalysisData,
 } from "@/lib/api";
@@ -48,6 +49,9 @@ export default function JobListingsPage() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
+  // Job ids the signed-in candidate has already applied to — best-effort,
+  // never blocks the page; used only to warn against an accidental duplicate.
+  const [appliedJobIds, setAppliedJobIds] = useState<Set<number>>(new Set());
 
   // Apply Modal state
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
@@ -146,7 +150,16 @@ export default function JobListingsPage() {
     }
   };
 
+  // The backend scopes /applications/ to the caller's own role — a candidate
+  // only ever gets their own rows back, never another candidate's.
+  const refreshAppliedJobIds = () => {
+    getApplications()
+      .then((apps) => setAppliedJobIds(new Set(apps.map((a) => a.job_id))))
+      .catch(() => setAppliedJobIds(new Set()));
+  };
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount, the standard data-load pattern used throughout this app
     fetchData();
   }, []);
 
@@ -158,8 +171,11 @@ export default function JobListingsPage() {
       getMyInterests()
         .then(setInterests)
         .catch(() => setInterests([]));
+      refreshAppliedJobIds();
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing candidate-only state when `user` changes away from candidate is the sync point itself
       setInterests([]);
+      setAppliedJobIds(new Set());
     }
   }, [user]);
 
@@ -261,8 +277,26 @@ export default function JobListingsPage() {
         status: "reviewing",
       });
 
-      const reqId = `req_job_${selectedJob.id}`;
-      const reqDesc = selectedJob.description;
+      // Job-specific requirement (this posting's own criterion) vs. job-neutral
+      // evidence (a CV, a certificate, a profile link — describes the person,
+      // not this posting). Filing everything under req_job_<id> made it
+      // invisible to every *other* application: per API_CONTRACTS §5.2, only
+      // req_job_<this job id> or anything outside the req_job_<n> namespace
+      // counts toward a report, and job-neutral rows count toward *every*
+      // application — including this one — so nothing is lost here.
+      const GENERAL_REQ = {
+        cv: "req_general_cv",
+        linkedin: "req_general_linkedin",
+        portfolio: "req_general_portfolio",
+        certificate: "req_general_certificate",
+        chatgpt: "req_general_chatgpt",
+      } as const;
+      const GENERAL_DESC = {
+        linkedin: "Adayın profesyonel geçmişini yansıtan bir LinkedIn/profesyonel profil bağlantısı.",
+        portfolio: "Adayın portföyünü, projelerini veya çalışma örneklerini gösteren bir bağlantı.",
+        certificate: "Adayın sahip olduğu bir sertifika, ehliyet veya mesleki yetkinlik belgesi.",
+        chatgpt: "Adayın yapay zeka sohbet geçmişinden elde edilen ek bağlam/kanıt.",
+      } as const;
       let primaryAiResult = null;
 
       // 3. Process PDF/TXT Resume
@@ -270,7 +304,7 @@ export default function JobListingsPage() {
       // screen cannot claim evidence that failed to process.
       const failedSources: string[] = [];
       if (resumeFile) {
-        const extractRes = await analyzeCandidateFile(extId, reqId, resumeFile, consentVerified);
+        const extractRes = await analyzeCandidateFile(extId, GENERAL_REQ.cv, resumeFile, consentVerified);
         if (extractRes.success) {
           primaryAiResult = extractRes.data;
           extraSources++;
@@ -281,21 +315,21 @@ export default function JobListingsPage() {
 
       // 4. Process LinkedIn URL
       if (linkedinUrl.trim()) {
-        const r = await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`, reqId, reqDesc, consentVerified);
+        const r = await analyzeCandidateEvidence(extId, "LINKEDIN_URL", `LinkedIn Profile URL: ${linkedinUrl.trim()}`, GENERAL_REQ.linkedin, GENERAL_DESC.linkedin, consentVerified);
         if (r.success) extraSources++;
         else failedSources.push("LinkedIn");
       }
 
       // 5. Process GitHub / Portfolio Link
       if (githubUrl.trim()) {
-        const r = await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, reqId, reqDesc, consentVerified);
+        const r = await analyzeCandidateEvidence(extId, "PORTFOLIO_LINK", `Portfolio Project Link: ${githubUrl.trim()}`, GENERAL_REQ.portfolio, GENERAL_DESC.portfolio, consentVerified);
         if (r.success) extraSources++;
         else failedSources.push("Portföy bağlantısı");
       }
 
       // 6. Process Certificate / License Link
       if (certificateLink.trim()) {
-        const r = await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`, reqId, reqDesc, consentVerified);
+        const r = await analyzeCandidateEvidence(extId, "CERTIFICATE_LICENSE", `Certificate/License Link: ${certificateLink.trim()}`, GENERAL_REQ.certificate, GENERAL_DESC.certificate, consentVerified);
         if (r.success) extraSources++;
         else failedSources.push("Sertifika/belge bağlantısı");
       }
@@ -303,7 +337,7 @@ export default function JobListingsPage() {
       // 7. Process ChatGPT Export JSON
       if (chatgptJsonFile) {
         const text = await chatgptJsonFile.text();
-        const r = await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), reqId, reqDesc, consentVerified);
+        const r = await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), GENERAL_REQ.chatgpt, GENERAL_DESC.chatgpt, consentVerified);
         if (r.success) extraSources++;
         else failedSources.push("Sohbet dışa aktarımı");
       }
@@ -317,6 +351,7 @@ export default function JobListingsPage() {
       });
 
       await fetchData();
+      refreshAppliedJobIds();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Başvurunuz gönderilemedi, lütfen tekrar deneyin.");
     } finally {
@@ -457,7 +492,9 @@ export default function JobListingsPage() {
                 İlgi alanlarınıza göre sıralandı — düzenlemek için Aday Paneli.
               </p>
             )}
-            {orderedJobs.map((job) => (
+            {orderedJobs.map((job) => {
+              const alreadyApplied = job.id != null && appliedJobIds.has(job.id);
+              return (
               <div
                 key={job.id}
                 className="card card-lift p-8 space-y-5 relative overflow-hidden group"
@@ -475,6 +512,11 @@ export default function JobListingsPage() {
                         <span className="dot-live !w-1.5 !h-1.5" aria-hidden="true" />
                         {JOB_STATUS_LABELS[job.status] ?? "Yayında"}
                       </span>
+                      {alreadyApplied && (
+                        <span className="badge bg-brand/10 text-brand border-brand/30 uppercase tracking-wider">
+                          Zaten başvurdunuz
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-fg-mute mt-1.5 flex flex-wrap items-center gap-x-2">
                       <span>{job.company_name || "EİP Partner Kurum"}</span>
@@ -490,9 +532,14 @@ export default function JobListingsPage() {
 
                   <button
                     onClick={() => handleOpenApplyModal(job)}
-                    className="btn btn-brand btn-shine text-sm shrink-0"
+                    title={alreadyApplied ? "Bu ilana daha önce başvurdunuz; yine de tekrar başvurabilirsiniz." : undefined}
+                    className={
+                      alreadyApplied
+                        ? "btn btn-quiet text-sm shrink-0"
+                        : "btn btn-brand btn-shine text-sm shrink-0"
+                    }
                   >
-                    Belgelerinle başvur
+                    {alreadyApplied ? "Tekrar başvur" : "Belgelerinle başvur"}
                     <span aria-hidden="true">&rarr;</span>
                   </button>
                 </div>
@@ -501,7 +548,8 @@ export default function JobListingsPage() {
                   {job.description}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -595,7 +643,7 @@ export default function JobListingsPage() {
 
                   <div className="flex flex-wrap justify-center gap-3 pt-2">
                     <Link
-                      href={`/reports/${submitSuccessData.candidateExtId}`}
+                      href={`/reports/${submitSuccessData.appId}`}
                       className="btn btn-brand text-xs px-5 py-2.5"
                     >
                       Raporumu ve kanıtlarımı gör
@@ -803,7 +851,27 @@ export default function JobListingsPage() {
                         type="file"
                         accept=".json"
                         className="hidden"
-                        onChange={(e) => e.target.files?.[0] && setChatgptJsonFile(e.target.files[0])}
+                        onChange={(e) => {
+                          const picked = e.target.files?.[0];
+                          if (!picked) return;
+                          // The file is read in full (then sliced to 4000 chars) before
+                          // upload — a real multi-hundred-MB export would freeze a
+                          // low-end browser with no feedback. Same ceiling as the
+                          // resume upload.
+                          if (picked.size > MAX_UPLOAD_BYTES) {
+                            const mb = (picked.size / (1024 * 1024)).toFixed(1);
+                            setFormError(`Dosya çok büyük (${mb} MB). En fazla 5 MB yükleyebilirsiniz.`);
+                            e.target.value = "";
+                            return;
+                          }
+                          if (picked.size === 0) {
+                            setFormError("Dosya boş görünüyor. Lütfen başka bir dosya seçin.");
+                            e.target.value = "";
+                            return;
+                          }
+                          setFormError(null);
+                          setChatgptJsonFile(picked);
+                        }}
                       />
                       <button
                         id="basvuru-json"

@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { resetPassword } from "@/lib/api";
+import { resetPassword, ApiError } from "@/lib/api";
 import { SealMark } from "@/components/illustrations";
 
 /**
@@ -72,10 +72,12 @@ function ResetPasswordForm() {
       await resetPassword(token, password);
       setDone(true);
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Şifre güncellenemedi. Lütfen tekrar deneyin.");
+        // fetch() itself rejected (offline, DNS, dropped connection, CORS) —
+        // the thrown TypeError's English message must never reach the UI.
+        setError("Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.");
       }
     } finally {
       setLoading(false);
@@ -106,6 +108,7 @@ function ResetPasswordForm() {
             type="password"
             required
             minLength={8}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="En az 8 karakter"
@@ -125,6 +128,7 @@ function ResetPasswordForm() {
             type="password"
             required
             minLength={8}
+            autoComplete="new-password"
             value={passwordAgain}
             onChange={(e) => setPasswordAgain(e.target.value)}
             placeholder="••••••••"

@@ -136,3 +136,69 @@ def test_extract_keeps_the_callers_description_for_unstored_requirements(
     assert resp.status_code == 200, resp.text
     assert len(llm.requests) == 1
     assert llm.requests[0].requirement.description == "Serbest degerlendirme kriteri."
+
+
+def _second_employer_client(client):
+    """
+    Registers and returns a TestClient for a fresh, independent employer
+    account — the requirements-isolation regression below needs a SECOND
+    employer distinct from the `client`/`keyed_client` fixtures' user_id=900,
+    and the fixture roster has no second-employer identity to reuse.
+    """
+    reg = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"rakip-isveren-{uuid.uuid4().hex[:8]}@example.com",
+            "password": "personal-pass-1",
+            "role": "employer",
+            "company_name": f"Rakip Sirket {uuid.uuid4().hex[:6]}",
+            "tax_number": "1234567890",  # checksum-valid VKN
+            "company_size": "1-5",
+        },
+    )
+    assert reg.status_code == 201, reg.text
+    token = reg.json()["access_token"]
+    from fastapi.testclient import TestClient
+
+    import src.main as main_module
+    from tests.conftest import TEST_API_KEY
+
+    return TestClient(
+        main_module.app,
+        headers={
+            "X-Internal-API-Key": TEST_API_KEY,
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+
+def test_requirements_list_is_isolated_per_employer(client):
+    """
+    Regression guard for the scoping fix in list_requirements: without the
+    `created_by_user_id` filter (or if it were dropped, weakened, or
+    typo'd), one employer's hiring criteria would be readable by any other
+    employer. This proves a second, independently-registered employer's
+    GET /api/v1/requirements/ never contains employer 900's requirement.
+    """
+    own_external_id = f"req_isolation_{uuid.uuid4().hex[:8]}"
+    created = client.post(
+        "/api/v1/requirements/",
+        json={
+            "external_id": own_external_id,
+            "description": "Bu kriter yalnizca bu isverene ait olmalidir.",
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    own_list = client.get("/api/v1/requirements/")
+    assert own_list.status_code == 200
+    assert any(r["external_id"] == own_external_id for r in own_list.json()), (
+        "the creating employer must still see their own requirement"
+    )
+
+    other = _second_employer_client(client)
+    other_list = other.get("/api/v1/requirements/")
+    assert other_list.status_code == 200
+    assert all(r["external_id"] != own_external_id for r in other_list.json()), (
+        "a second employer must never see another employer's requirements"
+    )

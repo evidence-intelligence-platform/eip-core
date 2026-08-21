@@ -23,6 +23,7 @@ export default function KvkkPage() {
         <p className="text-sm text-fg-mute">
           6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında hazırlanmıştır.
         </p>
+        <p className="text-sm text-fg-mute">Son güncelleme: 21.08.2026</p>
       </header>
 
       <section className="space-y-3">
@@ -61,7 +62,7 @@ export default function KvkkPage() {
           <li>
             <strong className="text-fg">Google (Gemini API):</strong> belgelerinizin
             metni <em>ve fotoğrafı/taranmış görüntüsü</em>, değerlendirmenin yapılabilmesi
-            için Google&apos;ın yapay zeka servisine iletilir. Bu, verinizin yurt dışına
+            için Google&apos;ın yapay zekâ servisine iletilir. Bu, verinizin yurt dışına
             aktarılması anlamına gelir.
           </li>
         </ul>

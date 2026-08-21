@@ -29,11 +29,49 @@ export default function RegisterGatePage() {
     }
   }, [authLoading, user, router]);
 
+  // While the session is being restored — or the redirect above is already
+  // in flight — rendering the fork would flash a signup screen at someone
+  // who is signed in; hold a brief wait state instead.
+  if (authLoading || user) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+        <SealMark className="w-12 h-12 opacity-80 animate-float" />
+        <div role="status" className="flex items-center gap-2 text-fg-mute text-sm">
+          <span
+            className="w-4 h-4 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
+            aria-hidden="true"
+          />
+          {user ? "Yönlendiriliyorsunuz…" : "Yükleniyor…"}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto my-12 space-y-8 animate-fade-in-up">
+    <div className="relative max-w-2xl mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 right-[-8%] w-72 h-72 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "22s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 13%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 left-[-8%] w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "29s",
+          animationDelay: "-10s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 9%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="space-y-8 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <h1 className="text-title text-fg">
           Hesap Oluştur
         </h1>
         <p className="text-sm text-fg-soft">
@@ -87,8 +125,9 @@ export default function RegisterGatePage() {
           href="/login"
           className="text-brand hover:text-brand-strong hover:underline font-semibold transition-colors"
         >
-          Giriş Yap
+          Giriş yap
         </Link>
+      </div>
       </div>
     </div>
   );

@@ -1,17 +1,18 @@
 """
 EIF: Transactional E-mail Service
 ---
-Version: 1.1.0
+Version: 1.2.0
 Owner: EIF Architecture Team
 Compliance: 08_SECURITY_ARCHITECTURE.md — operational notifications, and
 Section 6 "Data Security Rules" (no PII outside the systems that need it);
 LAUNCH_READINESS.md launch blocker #1 (transactional e-mail infrastructure).
 ---
 Provider-agnostic sender. Resend is the wire today (plain HTTPS POST, no SDK
-dependency); swapping providers means changing only _deliver(). When
+dependency); swapping providers means changing only send_email(). When
 RESEND_API_KEY is not configured the service records that it skipped delivery
 instead of sending, so every flow that ends in an e-mail (password reset,
-welcome) still runs end to end in development.
+welcome, application decision, evidence review) still runs end to end in
+development.
 
 What that record contains is deliberately thin: never the message body, never
 the action link inside it, never the full recipient address. A password-reset
@@ -182,17 +183,77 @@ def send_email(to: str, subject: str, html: str) -> bool:
 # Message templates (Turkish, minimal inline-styled HTML)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _layout(title: str, body_html: str) -> str:
-    """Shared shell so every mail looks consistent without a template engine."""
+# Footer for mail the recipient asked for (reset link, welcome).
+DEFAULT_FOOTER_NOTE = "Bu işlemi siz başlatmadıysanız bu e-postayı yok sayabilirsiniz."
+
+# Footer for mail sent *about* the recipient — see _layout.
+NOTIFICATION_FOOTER_NOTE = (
+    "Bu bildirimi, EIP üzerindeki başvurunuz veya belgeniz hakkında bir karar "
+    "verildiği için aldınız."
+)
+
+# Both notification templates land the candidate on the same page: the hub
+# lists their applications and the review state of every document they
+# uploaded, so there is nothing deeper to link to.
+CANDIDATE_HUB_PATH = "/candidate/hub"
+
+
+def _candidate_hub_link() -> str:
+    """
+    Absolute link into the candidate hub.
+
+    Built from the same FRONTEND_URL the password-reset link uses, so one
+    correct value covers every outgoing link. Unlike a reset link this URL
+    carries no secret — it is only useful to someone who can already sign in.
+    """
+    base = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{base}{CANDIDATE_HUB_PATH}"
+
+def _layout(title: str, body_html: str, footer_note: str = DEFAULT_FOOTER_NOTE) -> str:
+    """
+    Shared shell so every mail looks consistent without a template engine.
+
+    `footer_note` is overridable because the default line ("ignore this if you
+    did not start it") only fits messages the recipient asked for. A decision
+    notice is sent *about* someone, not requested by them, so telling that
+    reader to ignore it would be advice to miss the verdict on their own
+    application.
+    """
     return f"""\
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a222b">
   <h2 style="font-size:18px;margin:0 0 16px">{title}</h2>
   {body_html}
   <p style="font-size:12px;color:#8a97a3;border-top:1px solid #e3e8ee;margin-top:24px;padding-top:12px">
     Bu e-posta EIP — Evidence Intelligence Platform tarafından gönderildi.
-    Bu işlemi siz başlatmadıysanız bu e-postayı yok sayabilirsiniz.
+    {footer_note}
   </p>
 </div>"""
+
+
+def _call_to_action(link: str, label: str) -> str:
+    """The single action button the notification templates share."""
+    return f"""\
+  <p style="margin:20px 0">
+    <a href="{link}"
+       style="background:#1f6feb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;display:inline-block">
+      {label}</a>
+  </p>"""
+
+
+def _quoted_note(heading: str, note: str | None) -> str:
+    """
+    Optional quoted note, or "" when there is nothing to quote.
+
+    The text is written by another human (an employer's decision note, an
+    admin's rejection reason) and reaches the reader from the platform's own
+    sending domain, so it is escaped exactly like welcome_email's display name.
+    """
+    if not note or not note.strip():
+        return ""
+    safe_note = html.escape(note.strip())
+    return f"""\
+  <p style="font-size:14px;line-height:1.6;margin:16px 0 4px"><strong>{heading}</strong></p>
+  <p style="font-size:14px;line-height:1.6;margin:0;padding:10px 12px;color:#3c4a5a;background:#f4f7fa;border-left:3px solid #cfd8e3">{safe_note}</p>"""
 
 
 def password_reset_email(reset_link: str) -> tuple[str, str]:
@@ -228,5 +289,113 @@ def welcome_email(display_name: str) -> tuple[str, str]:
   kanıtlarla değerlendiren bir platformdur — beyan değil, kanıt konuşur.</p>
   <p style="font-size:14px;line-height:1.6">Belgeleriniz yalnızca sizin onayınızla işlenir; dilediğiniz an
   hesabınızı ve tüm verilerinizi Hesap sayfasından kalıcı olarak silebilirsiniz.</p>""",
+    )
+    return subject, message_html
+
+
+def application_decision_email(
+    job_title: str | None, decision: str, note: str | None = None
+) -> tuple[str, str]:
+    """
+    (subject, html) for the employer's verdict on one application.
+
+    `decision` is the application's new status; only "accepted" reads as a
+    positive outcome, and the router calls this for final decisions only —
+    "reviewing" is housekeeping, not news worth a mail.
+
+    The posting title stays out of the subject on purpose: send_email logs the
+    subject on every path, and a line pairing a masked address with a named
+    posting and its verdict says considerably more about a person than the
+    flow name it is there to record.
+    """
+    accepted = decision == "accepted"
+    subject = (
+        "EIP — Başvurunuz kabul edildi" if accepted
+        else "EIP — Başvurunuz olumsuz sonuçlandı"
+    )
+
+    # job_title is employer-supplied free text; escape before interpolating.
+    # It can also be missing — a posting deleted between the decision and this
+    # call leaves the mail without one, and "" would render as empty quotes.
+    safe_title = html.escape(job_title.strip()) if job_title and job_title.strip() else None
+    subject_phrase = (
+        f'<strong>&laquo;{safe_title}&raquo;</strong> ilanına yaptığınız başvuru'
+        if safe_title else "Bir ilana yaptığınız başvuru"
+    )
+
+    if accepted:
+        heading = "Başvurunuz kabul edildi"
+        lead = (
+            f"""  <p style="font-size:14px;line-height:1.6">{subject_phrase} <strong>kabul edildi</strong>."""
+            """ İşveren süreci buradan sürdürecek; gelişmeleri aday panelinizden takip edebilirsiniz.</p>"""
+        )
+    else:
+        heading = "Başvurunuz olumsuz sonuçlandı"
+        lead = (
+            f"""  <p style="font-size:14px;line-height:1.6">{subject_phrase} bu kez <strong>olumsuz sonuçlandı</strong>."""
+            """ Karar yalnızca bu ilan içindir: profiliniz ve doğrulanmış belgeleriniz geçerliliğini korur,"""
+            """ diğer ilanlara başvurmaya devam edebilirsiniz.</p>"""
+        )
+
+    body_parts = [
+        lead,
+        _quoted_note("İşverenin notu:", note),
+        _call_to_action(_candidate_hub_link(), "Başvurularımı görüntüle"),
+    ]
+    message_html = _layout(
+        heading,
+        "\n".join(part for part in body_parts if part),
+        footer_note=NOTIFICATION_FOOTER_NOTE,
+    )
+    return subject, message_html
+
+
+def evidence_review_email(
+    document_label: str | None, decision: str, note: str | None = None
+) -> tuple[str, str]:
+    """
+    (subject, html) for the moderator's verdict on one uploaded document.
+
+    `decision` is the evidence row's new review_status; anything other than
+    "approved" is presented as a rejection. The rejection reason — which the
+    candidate previously had no way to learn at all — is the `note`.
+    """
+    approved = decision == "approved"
+    subject = "EIP — Belgeniz onaylandı" if approved else "EIP — Belgeniz reddedildi"
+
+    # The stored original filename, which the uploader themselves chose. Only
+    # ever sent back to that same person, and escaped like any other free text.
+    safe_label = (
+        html.escape(document_label.strip())
+        if document_label and document_label.strip() else None
+    )
+    subject_phrase = (
+        f'<strong>&laquo;{safe_label}&raquo;</strong> adlı belgeniz'
+        if safe_label else "Yüklediğiniz belge"
+    )
+
+    if approved:
+        heading = "Belgeniz onaylandı"
+        lead = (
+            f"""  <p style="font-size:14px;line-height:1.6">{subject_phrase} bir yetkili tarafından incelendi ve"""
+            """ <strong>onaylandı</strong>. Bu belge artık başvurularınızda doğrulanmış kanıt olarak değerlendiriliyor.</p>"""
+        )
+    else:
+        heading = "Belgeniz reddedildi"
+        lead = (
+            f"""  <p style="font-size:14px;line-height:1.6">{subject_phrase} bir yetkili tarafından incelendi ve"""
+            """ <strong>reddedildi</strong>. Bu belge kanıt olarak sayılmaz; okunaklı ve eksiksiz bir kopyasını"""
+            """ yeniden yükleyebilirsiniz.</p>"""
+        )
+
+    body_parts = [
+        lead,
+        _quoted_note("Değerlendirme notu:", note),
+        _call_to_action(_candidate_hub_link(), "Belgelerimi görüntüle"),
+    ]
+    message_html = _layout(
+        heading,
+        "\n".join(part for part in body_parts if part),
+        footer_note=NOTIFICATION_FOOTER_NOTE,
     )
     return subject, message_html

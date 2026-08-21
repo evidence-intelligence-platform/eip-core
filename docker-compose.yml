@@ -40,11 +40,14 @@ services:
       # JWT_SECRET name was silently ignored.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set it in .env}
       # Optional integrations — all safely dormant when unset:
-      # without RESEND_API_KEY e-mails are logged instead of sent; without
-      # SENTRY_DSN error tracking is a no-op. FRONTEND_URL is where password
-      # reset links point (the public site address in production).
+      # without RESEND_API_KEY no e-mail is sent (the engine only logs that
+      # delivery was skipped; EMAIL_DEV_LOG_LINK=true additionally logs the
+      # reset link — LOCAL DEVELOPMENT ONLY, the link is a live token);
+      # without SENTRY_DSN error tracking is a no-op. FRONTEND_URL is where
+      # password reset links point (the public site address in production).
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_DEV_LOG_LINK: ${EMAIL_DEV_LOG_LINK:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       SENTRY_DSN: ${SENTRY_DSN:-}
       # Uploaded evidence lives here and MUST be a mounted volume. The default
@@ -62,7 +65,7 @@ services:
         condition: service_healthy
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Public Zone Frontend (Next.js 15)
+  # Public Zone Frontend (Next.js 16)
   # ───────────────────────────────────────────────────────────────────────────
   frontend:
     build:

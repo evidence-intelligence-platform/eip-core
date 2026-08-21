@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
@@ -27,6 +27,13 @@ const TITLE = "EİP — Kanıta Dayalı İşe Alım";
 const DESCRIPTION =
   "Her meslekten aday, belgeleriyle başvurur; işveren kanıtı gerekçesiyle birlikte görür. Sağlıktan lojistiğe, mutfaktan inşaata tüm sektörler için.";
 
+// Paint the browser chrome (mobile URL bar, PWA title bar) in the warm-ink
+// ground instead of default white. themeColor lives on the viewport export
+// in Next 15+, not in metadata.
+export const viewport: Viewport = {
+  themeColor: "#14110e",
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: TITLE,
@@ -54,14 +61,16 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${inter.variable} ${fraunces.variable} h-full antialiased dark`}
+      className={`${inter.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-ground text-fg">
         <BackgroundFX />
         <ScrollProgress />
         <AuthProvider>
           <Navbar />
-          <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
+          {/* px-4 matches the Navbar and Footer containers exactly, so all
+              three share one gutter line at every breakpoint. */}
+          <main className="flex-1 container mx-auto px-4 py-4 sm:py-6 lg:py-8">
             {children}
           </main>
           <Footer />

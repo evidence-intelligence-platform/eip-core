@@ -10,6 +10,13 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
+  /* Single warm-dark theme, no toggle — tell the UA so native form
+     controls (select popups, checkboxes/radios, date pickers, scrollbars)
+     render with dark chrome instead of defaulting to a light UA palette
+     punched into the page. */
+  color-scheme: dark;
+  accent-color: var(--brand);
+
   /* Ground & surfaces — warm ink, not blue-slate */
   --bg: #14110e;
   --bg-deep: #0d0b09;
@@ -353,6 +360,18 @@ body::after {
   transform: translateY(-1px);
 }
 
+/* Compact modifier for .btn in tight spaces (e.g. the desktop navbar CTA) —
+   keeps the same hover-lift/press-scale physics as the full-size button,
+   just smaller. .btn/.btn-brand live outside any @layer, so they already
+   out-rank Tailwind's utility classes (which Tailwind puts inside its own
+   layer) regardless of source order — a px-3.5/py-1.5/text-xs utility
+   can't shrink .btn's padding/font-size. This modifier is unlayered too
+   and defined after .btn, so it wins the same way. */
+.btn-sm {
+  padding: 0.375rem 0.875rem;
+  font-size: 0.75rem;
+}
+
 .field {
   width: 100%;
   background: var(--bg-deep);
@@ -364,9 +383,20 @@ body::after {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Compact modifier for .field in dense in-card forms — same cascade story
+   as .btn-sm: unlayered and defined after .field, so it out-ranks both the
+   base recipe and Tailwind's layered text-xs/px/py utilities. */
+.field-sm {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+
 @media (max-width: 640px) {
-  /* iOS Safari auto-zooms the viewport when focusing an input under 16px. */
-  .field {
+  /* iOS Safari auto-zooms the viewport when focusing an input under 16px.
+     .field-sm is repeated here so the compact modifier (defined above)
+     cannot win the cascade and reintroduce the zoom. */
+  .field,
+  .field-sm {
     font-size: 1rem;
   }
 }
@@ -407,6 +437,14 @@ body::after {
   transform: translateY(20px);
   transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The compositor hint belongs only to sections still waiting off-screen:
+   .is-visible lands in the same style computation that starts the
+   transition, so a hint on the base rule would be revoked exactly when
+   the entrance begins. Scoped here it stays up while the entrance is
+   still pending and no page holds a promoted layer per played section. */
+.reveal:not(.is-visible) {
   will-change: opacity, transform;
 }
 
@@ -425,10 +463,23 @@ body::after {
 .reveal-stagger.is-visible > *:nth-child(4) { animation-delay: 0.35s; }
 .reveal-stagger.is-visible > *:nth-child(5) { animation-delay: 0.45s; }
 .reveal-stagger.is-visible > *:nth-child(6) { animation-delay: 0.55s; }
+/* Children past the sixth would otherwise get no delay at all and land
+   before their siblings — cap the tail instead of reversing the order. */
+.reveal-stagger.is-visible > *:nth-child(n+7) { animation-delay: 0.6s; }
 
 /* While the parent is still off-screen the children must not flash. */
 .reveal-stagger:not(.is-visible) > * {
   opacity: 0;
+}
+
+/* If JS never runs, IntersectionObserver never adds .is-visible and the
+   content above would stay invisible forever — show it plainly instead. */
+@media (scripting: none) {
+  .reveal,
+  .reveal-stagger:not(.is-visible) > * {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Elevated card variants ────────────────────────────────────────────
@@ -549,6 +600,12 @@ body::after {
   animation-play-state: paused;
 }
 
+/* Keyboard focus must pause the marquee too, or the focused chip drifts
+   into the mask fade and off-screen while the user is standing on it. */
+.ticker-row:focus-within {
+  animation-play-state: paused;
+}
+
 /* ── Skeleton shimmer ──────────────────────────────────────────────────
    Loading placeholders that hold the layout instead of a spinner. */
 
@@ -605,6 +662,12 @@ details[open] .faq-body {
   overflow: hidden;
 }
 
+/* Safari ignores `list-none` on <summary> and still draws its native
+   disclosure triangle next to our own "+" glyph — hide it. */
+summary::-webkit-details-marker {
+  display: none;
+}
+
 /* Keyboard users need to see where they are. Applies wherever a component
    does not define its own focus-visible treatment. */
 :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
@@ -621,5 +684,172 @@ details[open] .faq-body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ── Print — "PDF olarak kaydet" ────────────────────────────────────────
+   The evidence report is the one screen meant to leave the browser: the
+   employer circulates it internally, the candidate keeps a copy. The app
+   has a single warm-dark theme, and that ground on paper is a slab of ink
+   nobody can read (or afford to print), so print re-assigns the tokens
+   rather than restyling components one by one. Tailwind's palette is
+   declared `@theme inline` above, which compiles utilities down to
+   var(--surface) / var(--fg) / color-mix(… var(--warn) …) — reassigning
+   the source variables here carries .card, .badge, .field and every
+   bg-, text- and border- utility over to paper with no per-component
+   work. Nothing outside this block changes; on screen the theme is
+   untouched. */
+@media print {
+  :root {
+    /* The screen theme tells the UA "dark"; on paper that would leave
+       native chrome rendering dark boxes around light content. */
+    color-scheme: light;
+
+    /* Ground & surfaces — warm paper, not clinical white */
+    --bg: #ffffff;
+    --bg-deep: #f6f3ee;
+    --surface: #ffffff;
+    --raised: #f2eee7;
+    --line: #d5cec2;
+    --line-strong: #a89e8d;
+
+    /* Text — the screen's warm ink, inverted onto the sheet */
+    --fg: #14110e;
+    --fg-soft: #3a342b;
+    --fg-mute: #5d5548;
+
+    /* Brand. The screen brass (#e3a84e) measures ~1.9:1 against white —
+       on paper it prints as a washed-out yellow that a laser printer
+       barely lays down at all. This darker bronze holds the same hue
+       family at ~5.9:1, so the eyebrow, the score ring, the "DAYANAK"
+       rule and the "Değerlendirme Gerekçesi" label stay readable. */
+    --brand: #8a5a12;
+    --brand-strong: #6d460b;
+    --brand-ink: #ffffff;
+
+    /* Status — the same three signals, darkened until each clears AA on
+       white (green ~6.5:1, amber ~6.3:1, red ~8.1:1). Their luminances
+       sit close together, so on a monochrome printer the distinction is
+       carried by the badge's own wording ("Doğrulandı" / "Yetersiz
+       Belge" / "Çelişki") and by the evidence card's left rule, not by
+       hue alone. */
+    --ok: #1d6b3a;
+    --warn: #8a5300;
+    --err: #9b1c1c;
+  }
+
+  /* The report wrapper keeps its own padding, so the sheet margin only
+     has to cover what the printer cannot reach. */
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    /* body clips the x-axis for the screen's off-canvas drawer; left in
+       place, a printer can silently drop anything near the edge. */
+    overflow: visible;
+  }
+
+  /* The status tints are information, not decoration — browsers default
+     to dropping backgrounds when printing. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Screen-only chrome, hidden from here so the components themselves
+     stay unaware of printing: the paper grain, the two decorative
+     aria-hidden layers <body> mounts (BackgroundFX, ScrollProgress), and
+     the app frame. The first three are position:fixed, which some engines
+     stamp onto every single printed page. */
+  body::after,
+  body > div[aria-hidden="true"],
+  body > nav,
+  body > footer {
+    display: none !important;
+  }
+
+  /* Opt-out for controls a reader cannot use on paper — the print button
+     itself, back links, panel escapes. */
+  .no-print {
+    display: none !important;
+  }
+
+  /* For a flex row whose left half is .no-print: keeps the surviving
+     child on the right edge it holds on screen. */
+  .print-push-right {
+    margin-left: auto;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* <Reveal> is driven by IntersectionObserver: everything still below
+     the fold when the print dialog opens is opacity:0 and would print as
+     blank paper. Forced visible — the reader is printing the whole
+     document, not the part they happened to have scrolled past. */
+  .reveal,
+  .reveal-stagger:not(.is-visible) > *,
+  .reveal-stagger.is-visible > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Motion and depth are screen effects; on paper they only cost ink. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* The brass hairline is a two-layer background-image clipped to the
+     border box — the one border that disappears entirely on a printer
+     that honours no backgrounds. Fall back to a plain rule. */
+  .border-gradient {
+    background-image: none !important;
+    border-color: var(--line-strong) !important;
+  }
+
+  .card-glow::before,
+  .btn-shine::after {
+    display: none !important;
+  }
+
+  /* An evidence card split across two sheets separates its requirement
+     heading from the reasoning that justifies it. */
+  .card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Outline instead of tint, so the status pill survives even a printer
+     that lays down no background at all. */
+  .badge {
+    background: transparent !important;
+    border-color: currentColor !important;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* A printed link is not clickable; it reads as plain emphasised text. */
+  a {
+    text-decoration: none;
   }
 }

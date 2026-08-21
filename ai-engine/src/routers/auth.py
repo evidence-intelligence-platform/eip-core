@@ -19,6 +19,8 @@ from sqlmodel import Session, select
 from src.db.database import get_session
 from src.db.models import (
     Candidate,
+    Company,
+    ConsentLog,
     Evidence,
     ExplainabilityReport,
     JobApplication,
@@ -30,6 +32,7 @@ from src.db.models import (
 from src.rate_limit import limiter
 from src.security.auth import verify_api_key
 from src.security.jwt import create_user_access_token, get_current_user_payload, hash_password, verify_password
+from src.security.permissions import CurrentUser, require_user
 from src.services.audit import anonymize_identifier, record_audit
 from src.services.email_service import password_reset_email, send_email, welcome_email
 from src.services.storage import delete_upload
@@ -538,6 +541,13 @@ def delete_me(
       that predate ownership tracking (created_by_user_id is NULL) cannot be
       attributed to anyone and are left in place. Company rows are never
       deleted: they may be shared.
+    - Account-scoped rows: every PasswordResetToken of the account — the
+      forgot/reset flow only ever marks rows used, it never deletes them, so
+      anyone who once requested a reset link has live rows — and every
+      free-form Requirement the account created via POST /api/v1/requirements
+      (created_by_user_id, external_id outside the "req_job_" namespace the
+      posting branch already covers). Both carry a cascade-less foreign key
+      to useraccount.
     - ExplainabilityReports pointing at a deleted JobApplication go with it —
       the foreign key has no cascade, so leaving them breaks the erasure.
     - ConsentLog rows are deliberately KEPT: the consent record is the legal
@@ -604,8 +614,29 @@ def delete_me(
             session.delete(requirement)
         session.delete(posting)
 
-    # The postings above reference this account (created_by_user_id), so they
-    # must be gone from the database before the account row itself goes.
+    # ── Account-scoped rows ─────────────────────────────────────────────────
+    # Password reset tokens: user_id is a cascade-less NOT NULL foreign key,
+    # and forgot/reset-password only ever mark rows used — a surviving row
+    # aborts the erasure on PostgreSQL exactly like a surviving report would.
+    for reset_token in session.exec(
+        select(PasswordResetToken).where(PasswordResetToken.user_id == user_id)
+    ).all():
+        session.delete(reset_token)
+
+    # Free-form requirements (POST /api/v1/requirements) carry the same
+    # cascade-less foreign key via created_by_user_id. The posting loop above
+    # only removed the auto-generated "req_job_<id>" rows; this sweep catches
+    # every requirement the account created, whatever its external_id.
+    # (Autoflush has already applied the pending deletes, so the loop's rows
+    # do not come back here.)
+    for requirement in session.exec(
+        select(Requirement).where(Requirement.created_by_user_id == user_id)
+    ).all():
+        session.delete(requirement)
+
+    # The postings and requirements above reference this account
+    # (created_by_user_id), and the reset tokens do via user_id — all must be
+    # gone from the database before the account row itself goes.
     session.flush()
     session.delete(user)
 
@@ -634,3 +665,472 @@ def delete_me(
             pass
 
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KVKK md. 11 — right of access & data portability (GET /me/export)
+# ─────────────────────────────────────────────────────────────────────────────
+# Erasure (DELETE /me above) and access are the two halves of one right, and
+# they must agree on what "the caller's own data" is. This endpoint therefore
+# walks the SAME ownership queries delete_me walks — Candidate.user_id,
+# JobPosting.created_by_user_id, Requirement.created_by_user_id,
+# PasswordResetToken.user_id — only in the read direction. Nothing is keyed by
+# a path or query parameter, so there is no identifier for a caller to swap:
+# the export is bound to the account behind the token and to nothing else.
+
+EXPORT_FORMAT_VERSION = "1.0"
+EXPORT_PLATFORM_NAME = "EİP — Kanıt Zekâsı Platformu"
+
+# Shown inside the downloaded document itself: whoever opens the file months
+# later must be able to tell what it does and does not contain, without
+# reading this source file.
+EXPORT_NOTES = [
+    "Bu belge, KVKK md. 11 kapsamındaki 'kişisel verilere erişme ve veri taşınabilirliği' "
+    "hakkınız gereği, yalnızca sizin hesabınıza ait kayıtlardan oluşturulmuştur.",
+    "Yüklediğiniz belgelerin İÇERİĞİ (PDF, görsel vb. dosyaların kendisi) bu belgeye dahil "
+    "değildir; kanıt kayıtlarında yalnızca dosya adı, dosya türü, yüklenme zamanı ve "
+    "moderasyon durumu gibi üst veriler yer alır.",
+    "Şifreniz ve şifre sıfırlama bağlantılarınızın gizli değerleri hiçbir koşulda dışa "
+    "aktarılmaz; şifre sıfırlama kayıtlarında yalnızca tarih bilgisi bulunur.",
+    "İşveren hesapları için ilanlara gelen başvurular yalnızca sayısal özet olarak yer alır: "
+    "başvuran adayların kimlik ve kişisel bilgileri, onların KVKK hakları gereği bu belgeye "
+    "yazılmaz.",
+]
+
+
+class ExportCategory(BaseModel):
+    """One data category in the export, with how many records it carries."""
+    key: str
+    label: str
+    count: int
+
+
+class ExportAccount(BaseModel):
+    """
+    The account row itself. hashed_password is never included — it is a
+    credential, not personal data the account holder needs back.
+    """
+    id: int
+    email: str
+    role: str
+    created_at: str
+    # Employer-only profile. Unlike GET /auth/me, the tax number IS included
+    # here: /auth/me feeds the UI (which has no use for it), while this
+    # document answers "what do you hold about me" — and the tax number is
+    # held about this account, so withholding it would make the answer false.
+    company_name: str | None = None
+    company_size: str | None = None
+    company_email: str | None = None
+    tax_number: str | None = None
+
+
+class ExportCandidateProfile(BaseModel):
+    external_id: str
+    name: str
+    consent_granted: bool
+    consent_timestamp: str
+    created_at: str
+    interests: list[str] = []
+
+
+class ExportEvidence(BaseModel):
+    """
+    An evidence verdict as its owner may read it back.
+
+    Moderation internals stay behind the same seam candidates.py draws: the
+    storage path on disk, the deciding admin's e-mail and the internal review
+    note are not exported. `has_media` plus the filename/MIME pair is the
+    metadata promised in EXPORT_NOTES; the file bytes themselves are not here.
+    """
+    requirement_external_id: str
+    source_type: str
+    status: str
+    confidence_score: int | None = None
+    reasoning: str
+    evidence_pointer: str | None = None
+    review_status: str
+    created_at: str
+    has_media: bool = False
+    media_filename: str | None = None
+    media_mime: str | None = None
+
+
+class ExportApplication(BaseModel):
+    """The candidate's own application, named by the posting it went to."""
+    job_id: int
+    job_title: str | None = None
+    company_name: str | None = None
+    status: str
+    created_at: str
+
+
+class ExportReport(BaseModel):
+    """An explainability report about the exporting candidate."""
+    created_at: str
+    job_title: str | None = None
+    final_summary: str
+    # Stored as a JSON string; handed back verbatim rather than re-encoded, so
+    # the export never disagrees with what the platform actually holds.
+    match_matrix: str
+
+
+class ExportConsent(BaseModel):
+    candidate_external_id: str
+    consent_granted: bool
+    consent_timestamp: str
+    ip_address: str | None = None
+
+
+class ExportPasswordResetEvent(BaseModel):
+    """
+    Timing metadata only. The token hash — and above all the token itself,
+    which the database never stores — stay out: a live reset link inside a
+    downloadable file would be a ready-made account takeover.
+    """
+    created_at: str
+    expires_at: str
+    used_at: str | None = None
+
+
+class ExportJobPosting(BaseModel):
+    id: int
+    title: str
+    description: str
+    category: str
+    status: str
+    created_at: str
+    company_name: str | None = None
+
+
+class ExportRequirement(BaseModel):
+    external_id: str
+    description: str
+    created_at: str
+
+
+class ExportReceivedApplicationSummary(BaseModel):
+    """
+    Counts, never people. An employer's own hiring activity is their data; the
+    applicants behind it are not, so this carries totals per posting and no
+    applicant name, e-mail, candidate id or AI-derived trait.
+    """
+    job_id: int
+    job_title: str
+    total: int
+    by_status: dict[str, int] = {}
+
+
+class DataExportResponse(BaseModel):
+    format_version: str
+    platform: str
+    exported_at: str
+    notes: list[str]
+    categories: list[ExportCategory]
+    account: ExportAccount
+    # Candidate-side categories (empty for a pure employer account).
+    candidate_profiles: list[ExportCandidateProfile] = []
+    evidence: list[ExportEvidence] = []
+    applications: list[ExportApplication] = []
+    reports: list[ExportReport] = []
+    consents: list[ExportConsent] = []
+    # Account-scoped.
+    password_reset_events: list[ExportPasswordResetEvent] = []
+    # Employer-side categories (empty for a pure candidate account).
+    job_postings: list[ExportJobPosting] = []
+    requirements: list[ExportRequirement] = []
+    received_applications: list[ExportReceivedApplicationSummary] = []
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _job_of_application(session: Session, application: JobApplication) -> JobPosting | None:
+    return session.get(JobPosting, application.job_id) if application.job_id else None
+
+
+@router.get(
+    "/me/export",
+    response_model=DataExportResponse,
+    dependencies=[Depends(verify_api_key)],
+    summary="Export the authenticated account's own data as JSON (KVKK md. 11)",
+)
+# An export touches every table the account appears in, so it is far heavier
+# than /auth/me. The cap keeps a stuck download button (or a script) from
+# turning the portability right into a self-inflicted denial of service.
+@limiter.limit("5/minute")
+def export_me(
+    request: Request,
+    user: CurrentUser = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> DataExportResponse:
+    """
+    KVKK/GDPR right-of-access endpoint: returns everything the platform holds
+    about the CALLER, as structured JSON the client can offer as a download.
+
+    Scope, mirroring delete_me's ownership queries in the read direction:
+
+    - Candidate-owned: every Candidate profile linked via user_id, that
+      profile's Evidence (metadata only), JobApplications, ExplainabilityReports
+      and ConsentLog rows.
+    - Employer-owned: every JobPosting created by the account, the Requirements
+      it defined (both the auto-generated "req_job_<id>" ones and free-form
+      rows), and a COUNT-ONLY summary of the applications those postings
+      received. Applicant identity is deliberately absent — see
+      ExportReceivedApplicationSummary.
+    - Account-scoped: the account row (never its password hash) and password
+      reset events (timestamps only, never a token or its hash).
+
+    Both branches run for every account, exactly as in delete_me, so a hybrid
+    or admin account is handled uniformly instead of by a role switch that
+    could silently drop a category.
+    """
+    email = user.get("sub")
+    account = session.exec(select(UserAccount).where(UserAccount.email == email)).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    user_id = account.id
+
+    # ── Candidate-owned data ────────────────────────────────────────────────
+    candidates = session.exec(
+        select(Candidate).where(Candidate.user_id == user_id).order_by(Candidate.id)
+    ).all()
+
+    profiles: list[ExportCandidateProfile] = []
+    evidence_out: list[ExportEvidence] = []
+    applications_out: list[ExportApplication] = []
+    reports_out: list[ExportReport] = []
+    consents_out: list[ExportConsent] = []
+
+    for candidate in candidates:
+        profiles.append(ExportCandidateProfile(
+            external_id=candidate.external_id,
+            name=candidate.name,
+            consent_granted=candidate.consent_granted,
+            consent_timestamp=_iso(candidate.consent_timestamp),
+            created_at=_iso(candidate.created_at),
+            # Same comma-separated encoding candidates.py reads; unpacked here
+            # so the document is readable without knowing the storage format.
+            interests=[key for key in (candidate.interests or "").split(",") if key],
+        ))
+
+        for evidence in session.exec(
+            select(Evidence)
+            .where(Evidence.candidate_external_id == candidate.external_id)
+            .order_by(Evidence.id)
+        ).all():
+            evidence_out.append(ExportEvidence(
+                requirement_external_id=evidence.requirement_external_id,
+                source_type=evidence.source_type,
+                status=evidence.status,
+                confidence_score=evidence.confidence_score,
+                reasoning=evidence.reasoning,
+                evidence_pointer=evidence.evidence_pointer,
+                review_status=evidence.review_status,
+                created_at=_iso(evidence.created_at),
+                has_media=bool(evidence.media_path),
+                media_filename=evidence.media_filename,
+                media_mime=evidence.media_mime,
+            ))
+
+        for application in session.exec(
+            select(JobApplication)
+            .where(JobApplication.candidate_id == candidate.id)
+            .order_by(JobApplication.id)
+        ).all():
+            job = _job_of_application(session, application)
+            company = session.get(Company, job.company_id) if job and job.company_id else None
+            applications_out.append(ExportApplication(
+                job_id=application.job_id,
+                job_title=job.title if job else None,
+                company_name=company.name if company else None,
+                status=application.status,
+                created_at=_iso(application.created_at),
+            ))
+
+        for report in session.exec(
+            select(ExplainabilityReport)
+            .where(ExplainabilityReport.candidate_external_id == candidate.external_id)
+            .order_by(ExplainabilityReport.id)
+        ).all():
+            linked = (
+                session.get(JobApplication, report.application_id)
+                if report.application_id
+                else None
+            )
+            job = _job_of_application(session, linked) if linked else None
+            reports_out.append(ExportReport(
+                created_at=_iso(report.created_at),
+                job_title=job.title if job else None,
+                final_summary=report.final_summary,
+                match_matrix=report.match_matrix,
+            ))
+
+        # ConsentLog rows survive account deletion by design (they are the
+        # legal proof processing was authorized), which makes them exactly the
+        # kind of record the access right exists to disclose.
+        for consent in session.exec(
+            select(ConsentLog)
+            .where(ConsentLog.candidate_external_id == candidate.external_id)
+            .order_by(ConsentLog.id)
+        ).all():
+            consents_out.append(ExportConsent(
+                candidate_external_id=consent.candidate_external_id,
+                consent_granted=consent.consent_granted,
+                consent_timestamp=_iso(consent.consent_timestamp),
+                ip_address=consent.ip_address,
+            ))
+
+    # ── Employer-owned data ─────────────────────────────────────────────────
+    postings = session.exec(
+        select(JobPosting)
+        .where(JobPosting.created_by_user_id == user_id)
+        .order_by(JobPosting.id)
+    ).all()
+
+    postings_out: list[ExportJobPosting] = []
+    received: list[ExportReceivedApplicationSummary] = []
+    for posting in postings:
+        company = session.get(Company, posting.company_id) if posting.company_id else None
+        postings_out.append(ExportJobPosting(
+            id=posting.id,
+            title=posting.title,
+            description=posting.description,
+            category=posting.category,
+            status=posting.status,
+            created_at=_iso(posting.created_at),
+            company_name=company.name if company else None,
+        ))
+
+        # Counts only. The Candidate table is never joined in this branch: a
+        # name, an e-mail, a candidate id or an AI-derived trait belongs to the
+        # APPLICANT, and handing another person's data to the employer inside
+        # a KVKK document would be a fresh violation rather than compliance.
+        by_status: dict[str, int] = {}
+        for application in session.exec(
+            select(JobApplication).where(JobApplication.job_id == posting.id)
+        ).all():
+            by_status[application.status] = by_status.get(application.status, 0) + 1
+        received.append(ExportReceivedApplicationSummary(
+            job_id=posting.id,
+            job_title=posting.title,
+            total=sum(by_status.values()),
+            by_status=dict(sorted(by_status.items())),
+        ))
+
+    # Requirements the account defined. created_by_user_id covers both the
+    # free-form ones (POST /api/v1/requirements) and the auto-generated
+    # "req_job_<id>" rows; the per-posting lookup catches postings published
+    # before requirement ownership was tracked, whose rows carry a NULL owner —
+    # the same pair of paths delete_me deletes through.
+    requirements: dict[str, Requirement] = {
+        requirement.external_id: requirement
+        for requirement in session.exec(
+            select(Requirement)
+            .where(Requirement.created_by_user_id == user_id)
+            .order_by(Requirement.id)
+        ).all()
+    }
+    for posting in postings:
+        external_id = f"req_job_{posting.id}"
+        if external_id not in requirements:
+            owned = session.exec(
+                select(Requirement).where(Requirement.external_id == external_id)
+            ).first()
+            if owned:
+                requirements[external_id] = owned
+
+    requirements_out = [
+        ExportRequirement(
+            external_id=requirement.external_id,
+            description=requirement.description,
+            created_at=_iso(requirement.created_at),
+        )
+        for requirement in sorted(requirements.values(), key=lambda r: r.id or 0)
+    ]
+
+    # ── Account-scoped rows ─────────────────────────────────────────────────
+    reset_events = [
+        ExportPasswordResetEvent(
+            created_at=_iso(token_row.created_at),
+            expires_at=_iso(token_row.expires_at),
+            used_at=_iso(token_row.used_at),
+        )
+        for token_row in session.exec(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user_id)
+            .order_by(PasswordResetToken.id)
+        ).all()
+    ]
+
+    account_out = ExportAccount(
+        id=account.id,
+        email=account.email,
+        role=account.role,
+        created_at=_iso(account.created_at),
+        company_name=account.company_name,
+        company_size=account.company_size,
+        company_email=account.company_email,
+        tax_number=account.tax_number,
+    )
+
+    categories = [
+        ExportCategory(key="account", label="Hesap bilgileri", count=1),
+        ExportCategory(key="candidate_profiles", label="Aday profilleriniz", count=len(profiles)),
+        ExportCategory(
+            key="evidence",
+            label="Kanıt kayıtlarınız (yalnızca üst veri, dosya içeriği hariç)",
+            count=len(evidence_out),
+        ),
+        ExportCategory(key="applications", label="Başvurularınız", count=len(applications_out)),
+        ExportCategory(key="reports", label="Eşleşme raporlarınız", count=len(reports_out)),
+        ExportCategory(key="consents", label="Rıza (onay) kayıtlarınız", count=len(consents_out)),
+        ExportCategory(
+            key="password_reset_events",
+            label="Şifre sıfırlama işlemleriniz (yalnızca tarih bilgisi)",
+            count=len(reset_events),
+        ),
+        ExportCategory(key="job_postings", label="Yayınladığınız ilanlar", count=len(postings_out)),
+        ExportCategory(
+            key="requirements",
+            label="Tanımladığınız değerlendirme kriterleri",
+            count=len(requirements_out),
+        ),
+        ExportCategory(
+            key="received_applications",
+            label="İlanlarınıza gelen başvuruların sayısal özeti (aday kimliği içermez)",
+            count=len(received),
+        ),
+    ]
+
+    # A data-access request is a legally relevant event about a person, so it
+    # leaves a record like the erasure and the moderation verdicts do. The
+    # account survives an export, so the actor is the plain address here —
+    # unlike delete_me, which must hash it.
+    record_audit(
+        session,
+        actor_id=email,
+        action="account.export",
+        target_entity=f"useraccount:{user_id}",
+        details=f"role={account.role}; KVKK md.11 data portability export",
+    )
+    session.commit()
+
+    return DataExportResponse(
+        format_version=EXPORT_FORMAT_VERSION,
+        platform=EXPORT_PLATFORM_NAME,
+        exported_at=datetime.utcnow().isoformat(),
+        notes=EXPORT_NOTES,
+        categories=categories,
+        account=account_out,
+        candidate_profiles=profiles,
+        evidence=evidence_out,
+        applications=applications_out,
+        reports=reports_out,
+        consents=consents_out,
+        password_reset_events=reset_events,
+        job_postings=postings_out,
+        requirements=requirements_out,
+        received_applications=received,
+    )

@@ -20,6 +20,11 @@ const INTERNAL_KEY = process.env.EIP_INTERNAL_API_KEY;
 // (cookies, browser fingerprint headers) stays on this side.
 const FORWARDED_REQUEST_HEADERS = ["content-type", "authorization"];
 
+// Response side is a whitelist too: content-type so the body parses,
+// retry-after so a 429 can tell the client how long to wait, and
+// content-disposition so media downloads keep their filename.
+const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after", "content-disposition"];
+
 // Long enough for a Gemini call over a PDF, short enough that a hung engine
 // does not leave the user staring at a spinner forever.
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -91,6 +96,11 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     init.body = body;
   }
 
+  // One timeout budget for the whole exchange: the redirect follow-up below
+  // reuses this signal instead of starting a fresh 60 s clock, which would
+  // quietly double the worst case to 120 s.
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
   // The engine runs on a private network, so a redirect to its internal
   // hostname is unreachable from the browser. Follow it here instead, re-using
   // the buffered body — at most once, so a redirect loop cannot hang the route.
@@ -98,7 +108,7 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     const res = await fetch(url, {
       ...init,
       ...(body === undefined ? {} : { body }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal,
     });
     if (allowRedirect && res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
@@ -128,9 +138,22 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     );
   }
 
+  // A redirect we chose not to follow cannot be forwarded meaningfully: its
+  // Location points into the private network, and we strip it anyway. Name
+  // the failure instead of handing the browser a locationless 3xx.
+  if (upstream.status >= 300 && upstream.status < 400) {
+    console.error("[eip-proxy] unfollowed redirect", req.method, target, "->", upstream.status);
+    return NextResponse.json(
+      { detail: "Sunucuya şu anda ulaşılamıyor. Lütfen birazdan tekrar deneyin." },
+      { status: 502 },
+    );
+  }
+
   const responseHeaders = new Headers();
-  const contentType = upstream.headers.get("content-type");
-  if (contentType) responseHeaders.set("content-type", contentType);
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value) responseHeaders.set(name, value);
+  }
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

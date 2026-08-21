@@ -1,7 +1,7 @@
 """
 EIF: Evidence Moderation Router (Admin Only)
 ---
-Version: 1.1.0
+Version: 1.2.0
 Owner: EIF Architecture Team
 Compliance: 06_API_CONTRACTS.md — moderation layer;
 01_ENGINEERING_CONSTITUTION.md Article II — an approval asserts that a human
@@ -13,19 +13,23 @@ Every endpoint requires role == "admin" — an employer moderating the
 evidence of their own applicants would defeat the point.
 """
 
+import logging
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlmodel import Session, func, select
 
 from src.db.database import get_session
-from src.db.models import Evidence
+from src.db.models import Candidate, Evidence, UserAccount
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_admin
 from src.services.audit import record_audit
+from src.services.email_service import evidence_review_email, send_email
 from src.services.storage import load_upload, upload_exists
+
+logger = logging.getLogger("eip.moderation")
 
 router = APIRouter(
     prefix="/api/v1/moderation",
@@ -70,6 +74,38 @@ MEDIA_UNAVAILABLE_DETAIL = (
     "onaylanamaz. Kaydı reddedebilir veya adaydan belgeyi yeniden "
     "yüklemesini isteyebilirsiniz."
 )
+
+
+def _candidate_account_email(session: Session, candidate_external_id: str) -> str | None:
+    """
+    The address behind the profile an evidence row was filed under, or None
+    when there is nobody to reach: no profile with that external id, an
+    unowned profile (user_id NULL), or an account deleted since the upload.
+    Callers treat None as "skip the mail" — never as an error.
+    """
+    candidate = session.exec(
+        select(Candidate).where(Candidate.external_id == candidate_external_id)
+    ).first()
+    if candidate is None or candidate.user_id is None:
+        return None
+    account = session.get(UserAccount, candidate.user_id)
+    return account.email if account else None
+
+
+def _send_review_email(to: str, document_label: str | None, decision: str, note: str | None) -> None:
+    """
+    Background task: tells the uploader what the moderator decided.
+
+    Guarded end to end for the same reason as the application decision mail:
+    the verdict and its audit row are already committed, so neither a template
+    error nor a provider outage may surface in the request that queued it.
+    Nothing logged here identifies the recipient.
+    """
+    try:
+        subject, body_html = evidence_review_email(document_label, decision, note)
+        send_email(to, subject, body_html)
+    except Exception as exc:  # noqa: BLE001 — a notification may never escalate
+        logger.warning("Kanıt inceleme bildirimi gönderilemedi. error=%r", exc)
 
 
 def _to_item(evidence: Evidence) -> ModerationItem:
@@ -125,11 +161,15 @@ def list_evidences(
 def review_evidence(
     evidence_id: int,
     decision: ReviewDecision,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_admin),
 ) -> ModerationItem:
     """
-    Records the admin's verdict, along with who decided and when.
+    Records the admin's verdict, along with who decided and when, and mails
+    the uploader the outcome. A rejection reason used to exist only in this
+    table: the candidate saw a document turn red with no way to learn what was
+    wrong with it, which made re-uploading a guessing game.
 
     Approving is refused while the stored document cannot be opened: the
     verdict — and the AuditTrail row beside it — asserts that a human examined
@@ -172,6 +212,20 @@ def review_evidence(
     )
     session.commit()
     session.refresh(evidence)
+
+    # Queued after the commit, skipped when the profile has no reachable
+    # account, and unable to fail the request (see _send_review_email).
+    recipient = _candidate_account_email(session, evidence.candidate_external_id)
+    if recipient:
+        background_tasks.add_task(
+            _send_review_email,
+            recipient,
+            # The uploader's own filename, so they know which document this is
+            # about; text extractions carry none and the template says so.
+            evidence.media_filename,
+            evidence.review_status,
+            evidence.review_note,
+        )
 
     return _to_item(evidence)
 

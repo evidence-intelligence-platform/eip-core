@@ -34,8 +34,20 @@ load_dotenv()
 # No hardcoded fallback: a guessable default would let anyone forge tokens.
 # When the env var is missing (local dev / unit tests) we generate an
 # ephemeral random secret — tokens simply stop being valid across restarts,
-# which is safe. Production MUST set JWT_SECRET_KEY explicitly.
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or secrets.token_urlsafe(64)
+# which is safe locally. In a deployment marked production/staging via
+# ENVIRONMENT the ephemeral fallback is a silent failure mode instead: every
+# restart (and every worker in a multi-worker setup, each minting its own
+# secret) invalidates all outstanding sessions as random 401s. Fail fast at
+# boot there so a forgotten JWT_SECRET_KEY is caught on the first deploy.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    if os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "staging"):
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not set but ENVIRONMENT marks this as a live "
+            "deployment. Set it explicitly — generate one with: "
+            "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+        )
+    JWT_SECRET_KEY = secrets.token_urlsafe(64)
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 

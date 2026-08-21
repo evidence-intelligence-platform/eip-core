@@ -10,26 +10,29 @@
  * factory workers had nowhere to belong.
  */
 
+// Icons: use <CategoryIcon k={category.key} /> (components/CategoryIcon.tsx)
+// for the monochrome brass line-art glyphs — this list intentionally carries
+// no emoji/icon field, so there's nothing here to reintroduce colour with.
 export const CATEGORIES = [
-  { key: "ALL", label: "Tüm Sektörler", icon: "🌐" },
-  { key: "HEALTHCARE", label: "Sağlık", icon: "🩺" },
-  { key: "EDUCATION", label: "Eğitim", icon: "🎓" },
-  { key: "TECHNOLOGY", label: "Teknoloji & Yazılım", icon: "💻" },
-  { key: "TRANSPORTATION", label: "Ulaşım & Lojistik", icon: "🚚" },
-  { key: "CONSTRUCTION", label: "İnşaat & Mimarlık", icon: "🏗️" },
-  { key: "MANUFACTURING", label: "Üretim & Sanayi", icon: "🏭" },
-  { key: "GASTRONOMY", label: "Gastronomi & Mutfak", icon: "🍳" },
-  { key: "RETAIL", label: "Perakende & Satış", icon: "🛒" },
-  { key: "TOURISM", label: "Turizm & Konaklama", icon: "🏨" },
-  { key: "FINANCE", label: "Finans & Muhasebe", icon: "📊" },
-  { key: "LEGAL", label: "Hukuk & Danışmanlık", icon: "⚖️" },
-  { key: "SECURITY", label: "Güvenlik", icon: "🛡️" },
-  { key: "AGRICULTURE", label: "Tarım & Hayvancılık", icon: "🌾" },
-  { key: "BEAUTY", label: "Güzellik & Kişisel Bakım", icon: "💇" },
-  { key: "SERVICES", label: "Ev Hizmetleri & Bakım", icon: "🧹" },
-  { key: "MEDIA", label: "Medya & Tasarım", icon: "🎬" },
-  { key: "PUBLIC", label: "Kamu & Sosyal Hizmet", icon: "🏛️" },
-  { key: "OTHER", label: "Diğer", icon: "📋" },
+  { key: "ALL", label: "Tüm Sektörler" },
+  { key: "HEALTHCARE", label: "Sağlık" },
+  { key: "EDUCATION", label: "Eğitim" },
+  { key: "TECHNOLOGY", label: "Teknoloji & Yazılım" },
+  { key: "TRANSPORTATION", label: "Ulaşım & Lojistik" },
+  { key: "CONSTRUCTION", label: "İnşaat & Mimarlık" },
+  { key: "MANUFACTURING", label: "Üretim & Sanayi" },
+  { key: "GASTRONOMY", label: "Gastronomi & Mutfak" },
+  { key: "RETAIL", label: "Perakende & Satış" },
+  { key: "TOURISM", label: "Turizm & Konaklama" },
+  { key: "FINANCE", label: "Finans & Muhasebe" },
+  { key: "LEGAL", label: "Hukuk & Danışmanlık" },
+  { key: "SECURITY", label: "Güvenlik" },
+  { key: "AGRICULTURE", label: "Tarım & Hayvancılık" },
+  { key: "BEAUTY", label: "Güzellik & Kişisel Bakım" },
+  { key: "SERVICES", label: "Ev Hizmetleri & Bakım" },
+  { key: "MEDIA", label: "Medya & Tasarım" },
+  { key: "PUBLIC", label: "Kamu & Sosyal Hizmet" },
+  { key: "OTHER", label: "Diğer" },
 ] as const;
 
 export type CategoryKey = (typeof CATEGORIES)[number]["key"];
@@ -41,6 +44,3 @@ export function categoryLabel(key: string | null | undefined): string {
   return CATEGORIES.find((c) => c.key === key)?.label ?? "Diğer";
 }
 
-export function categoryIcon(key: string | null | undefined): string {
-  return CATEGORIES.find((c) => c.key === key)?.icon ?? "📋";
-}

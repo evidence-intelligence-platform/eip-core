@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { BuildingIcon } from "@/components/CategoryIcon";
 import { ApiError } from "@/lib/api";
+
+const COMPANY_SIZE_BANDS = ["1-5", "6-20", "21-50", "50+"] as const;
 
 export default function EmployerRegisterPage() {
   const [email, setEmail] = useState("");
@@ -20,6 +23,8 @@ export default function EmployerRegisterPage() {
 
   const { user, loading: authLoading, register } = useAuth();
   const router = useRouter();
+  const errorRef = useRef<HTMLDivElement>(null);
+  const sizeButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // A signed-in employer (or any signed-in user) landing here — e.g. via the
   // "İşveren kaydına geçin" link from the candidate page, or a stale bookmark
@@ -36,6 +41,35 @@ export default function EmployerRegisterPage() {
       );
     }
   }, [authLoading, user, router]);
+
+  // Seven fields put the submit button below the fold on phones, while the
+  // alert box lives at the top of the card — when an error lands there,
+  // bring it into view and focus it so a sighted user is not left staring
+  // at a button that seemingly did nothing.
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      errorRef.current?.focus({ preventScroll: true });
+    }
+  }, [error]);
+
+  // While the session is being restored — or the redirect above is already
+  // in flight — rendering the form would flash a signup screen at someone
+  // who is signed in; hold a brief wait state instead.
+  if (authLoading || user) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+        <SealMark className="w-12 h-12 opacity-80 animate-float" />
+        <div role="status" className="flex items-center gap-2 text-fg-mute text-sm">
+          <span
+            className="w-4 h-4 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
+            aria-hidden="true"
+          />
+          {user ? "Yönlendiriliyorsunuz…" : "Yükleniyor…"}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,14 +103,54 @@ export default function EmployerRegisterPage() {
     }
   };
 
+  // Native-radio arrow-key behaviour for the styled band buttons: arrows
+  // move (and select, wrapping around) within the group; Tab leaves it.
+  const handleSizeKeyDown = (
+    e: React.KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    let next: number;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      next = (index + 1) % COMPANY_SIZE_BANDS.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      next = (index - 1 + COMPANY_SIZE_BANDS.length) % COMPANY_SIZE_BANDS.length;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    setCompanySize(COMPANY_SIZE_BANDS[next]);
+    sizeButtonRefs.current[next]?.focus();
+  };
+
   return (
-    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
+    <div className="relative max-w-md mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 -right-14 w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "23s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 15%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 -left-14 w-56 h-56 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "30s",
+          animationDelay: "-11s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 10%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
         <span className="badge bg-brand/10 text-brand border-brand/30 uppercase tracking-wider">
           İşveren
         </span>
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <BuildingIcon className="w-8 h-8 text-brand mx-auto" />
+        <h1 className="text-title text-fg">
           İşveren Hesabı Oluştur
         </h1>
         <p className="text-sm text-fg-soft">
@@ -86,7 +160,9 @@ export default function EmployerRegisterPage() {
 
       {error && (
         <div
+          ref={errorRef}
           role="alert"
+          tabIndex={-1}
           className="p-3 bg-err/10 border border-err/30 text-err text-sm rounded-md text-center"
         >
           {error}
@@ -135,7 +211,7 @@ export default function EmployerRegisterPage() {
           </p>
         </div>
 
-        <div className="space-y-4 rounded-md border border-brand/25 bg-brand/5 p-4">
+        <div className="space-y-4 rounded-lg border border-brand/25 bg-brand/5 p-6">
           <p className="text-xs font-semibold text-brand uppercase tracking-wider">
             Şirket Bilgileri
           </p>
@@ -171,10 +247,24 @@ export default function EmployerRegisterPage() {
               type="text"
               inputMode="numeric"
               required
+              minLength={10}
+              maxLength={11}
+              pattern="[0-9]{10,11}"
               value={taxNumber}
               onChange={(e) => setTaxNumber(e.target.value.replace(/\D/g, ""))}
+              // The browser's validation bubble speaks English by default;
+              // give the length/pattern failure a Turkish sentence and clear
+              // it on input so a corrected value can submit.
+              onInvalid={(e) => {
+                const input = e.currentTarget;
+                input.setCustomValidity(
+                  input.validity.valueMissing
+                    ? ""
+                    : "Vergi numarası 10 haneli VKN veya 11 haneli TCKN olmalıdır."
+                );
+              }}
+              onInput={(e) => e.currentTarget.setCustomValidity("")}
               placeholder="10 haneli VKN veya 11 haneli TCKN"
-              maxLength={11}
               className="field"
             />
             <p className="mt-1.5 text-xs text-fg-mute">
@@ -182,18 +272,37 @@ export default function EmployerRegisterPage() {
             </p>
           </div>
 
-          <div>
-            <span className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5">
-              Çalışan Sayısı <span className="text-err">*</span>
-            </span>
-            <div className="grid grid-cols-4 gap-2">
-              {(["1-5", "6-20", "21-50", "50+"] as const).map((band) => (
+          <fieldset className="border-0 p-0 m-0 min-w-0">
+            <legend
+              id="kayit-calisan-sayisi"
+              className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5 p-0"
+            >
+              Çalışan Sayısı
+            </legend>
+            {/* Styled buttons carrying real radio semantics: one tab stop
+                (roving tabIndex), arrow keys move the selection. */}
+            <div
+              role="radiogroup"
+              aria-labelledby="kayit-calisan-sayisi"
+              className="grid grid-cols-4 gap-2"
+            >
+              {COMPANY_SIZE_BANDS.map((band, index) => (
                 <button
                   key={band}
+                  ref={(el) => {
+                    sizeButtonRefs.current[index] = el;
+                  }}
                   type="button"
-                  aria-pressed={companySize === band}
+                  role="radio"
+                  aria-checked={companySize === band}
+                  tabIndex={
+                    companySize === band || (companySize === "" && index === 0)
+                      ? 0
+                      : -1
+                  }
                   onClick={() => setCompanySize(band)}
-                  className={`py-2 rounded-md text-xs font-semibold border transition-all ${
+                  onKeyDown={(e) => handleSizeKeyDown(e, index)}
+                  className={`py-2 rounded-md text-xs font-semibold border transition-all active:scale-[0.98] ${
                     companySize === band
                       ? "bg-brand border-brand text-brand-ink"
                       : "bg-well border-line text-fg-soft hover:text-fg hover:border-line-strong"
@@ -203,10 +312,10 @@ export default function EmployerRegisterPage() {
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {companySize && companySize !== "1-5" && (
-            <div>
+            <div className="animate-fade-in-up">
               <label
                 htmlFor="kayit-kurumsal"
                 className="block text-xs font-semibold text-fg-soft uppercase tracking-wider mb-1.5"
@@ -255,7 +364,7 @@ export default function EmployerRegisterPage() {
         </div>
 
         <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
-          {loading ? "Hesap oluşturuluyor…" : "Hesap Oluştur"}
+          {loading ? "Hesap oluşturuluyor…" : "Hesap oluştur"}
         </button>
       </form>
 
@@ -278,7 +387,7 @@ export default function EmployerRegisterPage() {
             href="/login"
             className="text-brand hover:text-brand-strong hover:underline font-semibold transition-colors"
           >
-            Giriş Yap
+            Giriş yap
           </Link>
         </p>
         <p>
@@ -290,6 +399,7 @@ export default function EmployerRegisterPage() {
             Aday kaydına geçin
           </Link>
         </p>
+      </div>
       </div>
     </div>
   );

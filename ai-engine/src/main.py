@@ -360,8 +360,14 @@ async def extract_evidence(
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    except Exception:
+        # The real reason (LLM outage, database error, a bug) belongs in the
+        # operator's log, never in the response body: exception text leaks
+        # internals to whoever calls the API.
+        logging.getLogger("eip.extract").exception("Evidence extraction failed")
+        raise HTTPException(
+            status_code=500, detail="İşlem tamamlanamadı, lütfen tekrar deneyin."
+        )
 
 
 @app.post(
@@ -534,8 +540,13 @@ async def extract_evidence_from_file(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    except Exception:
+        # Same rule as /api/v1/extract: detail to the log, a generic Turkish
+        # message to the client.
+        logging.getLogger("eip.extract").exception("File evidence extraction failed")
+        raise HTTPException(
+            status_code=500, detail="İşlem tamamlanamadı, lütfen tekrar deneyin."
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

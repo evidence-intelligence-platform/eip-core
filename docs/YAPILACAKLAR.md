@@ -12,8 +12,11 @@
 > - Sentry → ai-engine'e `SENTRY_DSN` (Python projesi); frontend'e `SENTRY_DSN` +
 >   `NEXT_PUBLIC_SENTRY_DSN` (Next.js projesi)
 >
-> Anahtar girilmediği sürece hiçbir şey bozulmaz: e-postalar motor loguna yazılır
-> (şifre sıfırlama bağlantısı logdan alınabilir), Sentry sessizce devre dışı kalır.
+> Anahtar girilmediği sürece hiçbir şey bozulmaz: e-posta gönderilmez, motor
+> loguna yalnızca gönderimin atlandığı bilgisi düşer (bağlantı veya içerik asla
+> yazılmaz); Sentry sessizce devre dışı kalır. Geliştirmede sıfırlama bağlantısını
+> logda görmek istersen ai-engine'e `EMAIL_DEV_LOG_LINK=true` ver — **yalnızca
+> yerel makinede**, çünkü bağlantı canlı tek kullanımlık token içerir.
 
 ## 1. Alan adı satın al (diğer adımların ön koşulu)
 

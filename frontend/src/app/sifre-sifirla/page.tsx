@@ -6,6 +6,10 @@ import Link from "next/link";
 import { resetPassword, ApiError } from "@/lib/api";
 import { SealMark } from "@/components/illustrations";
 
+// Kept as a constant so the second field's aria-invalid can key off the
+// exact message instead of a duplicated string.
+const PASSWORD_MISMATCH = "Şifreler birbiriyle aynı değil.";
+
 /**
  * useSearchParams must live under a Suspense boundary so the rest of the
  * route can still be prerendered (Next.js app router requirement).
@@ -49,12 +53,16 @@ function ResetPasswordForm() {
       <div className="space-y-4">
         <div
           role="status"
-          className="p-4 bg-ok/10 border border-ok/30 text-ok text-sm rounded-md text-center leading-relaxed"
+          className="relative p-4 pr-16 bg-ok/10 border border-ok/30 text-ok text-sm rounded-md text-left leading-relaxed overflow-hidden"
         >
+          <SealMark
+            className="animate-stamp absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 opacity-80 pointer-events-none"
+            aria-hidden="true"
+          />
           Şifreniz güncellendi. Yeni şifrenizle giriş yapabilirsiniz.
         </div>
         <Link href="/login" className="btn btn-brand w-full text-center block">
-          Giriş Yap
+          Giriş yap
         </Link>
       </div>
     );
@@ -63,7 +71,7 @@ function ResetPasswordForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== passwordAgain) {
-      setError("Şifreler birbiriyle aynı değil.");
+      setError(PASSWORD_MISMATCH);
       return;
     }
     try {
@@ -111,9 +119,13 @@ function ResetPasswordForm() {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="En az 8 karakter"
+            placeholder="••••••••"
+            aria-describedby="sifre-kurali"
             className="field"
           />
+          <p id="sifre-kurali" className="mt-1.5 text-xs text-fg-mute">
+            En az 8 karakter olmalı.
+          </p>
         </div>
 
         <div>
@@ -132,12 +144,13 @@ function ResetPasswordForm() {
             value={passwordAgain}
             onChange={(e) => setPasswordAgain(e.target.value)}
             placeholder="••••••••"
+            aria-invalid={error === PASSWORD_MISMATCH ? true : undefined}
             className="field"
           />
         </div>
 
         <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
-          {loading ? "Güncelleniyor…" : "Şifreyi Güncelle"}
+          {loading ? "Güncelleniyor…" : "Şifreyi güncelle"}
         </button>
       </form>
 
@@ -151,10 +164,30 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
+    <div className="relative max-w-md mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 -right-14 w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "25s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 14%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 -left-14 w-56 h-56 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "32s",
+          animationDelay: "-13s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 9%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <h1 className="text-title text-fg">
           Yeni Şifre Belirle
         </h1>
         <p className="text-sm text-fg-soft">
@@ -162,9 +195,27 @@ export default function ResetPasswordPage() {
         </p>
       </div>
 
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          /* Mirror the two-field + button form with the app's skeleton
+             shimmer so the card holds its height while useSearchParams
+             hydrates — no blank card, no layout jump. */
+          <div className="space-y-4" aria-hidden="true">
+            <div>
+              <div className="skeleton h-3 w-24 mb-2" />
+              <div className="skeleton h-11 w-full" />
+            </div>
+            <div>
+              <div className="skeleton h-3 w-36 mb-2" />
+              <div className="skeleton h-11 w-full" />
+            </div>
+            <div className="skeleton h-11 w-full" />
+          </div>
+        }
+      >
         <ResetPasswordForm />
       </Suspense>
+      </div>
     </div>
   );
 }

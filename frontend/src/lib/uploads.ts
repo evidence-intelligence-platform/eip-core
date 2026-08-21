@@ -10,7 +10,7 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 /** What the file picker offers. Photos matter: most certificates are phone shots. */
 export const DOCUMENT_ACCEPT = ".pdf,.txt,.jpg,.jpeg,.png,.webp";
 
-export const DOCUMENT_HINT = "PDF, fotoğraf (JPG/PNG) veya metin · en fazla 5 MB";
+export const DOCUMENT_HINT = "PDF, fotoğraf (JPG/PNG/WEBP) veya metin · en fazla 5 MB";
 
 const ALLOWED_EXTENSIONS = ["pdf", "txt", "jpg", "jpeg", "png", "webp"];
 
@@ -31,7 +31,7 @@ export function validateDocument(file: File): string | null {
 
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.includes(extension)) {
-    return "Bu dosya türü desteklenmiyor. PDF, JPG, PNG veya metin dosyası yükleyebilirsiniz.";
+    return "Bu dosya türü desteklenmiyor. PDF, JPG, PNG, WEBP veya metin dosyası yükleyebilirsiniz.";
   }
 
   return null;

@@ -31,6 +31,24 @@ export default function LoginPage() {
     }
   }, [authLoading, user, router]);
 
+  // While the session is being restored — or the redirect above is already
+  // in flight — rendering the form would flash a login screen at someone who
+  // is signed in; hold a brief wait state instead.
+  if (authLoading || user) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+        <SealMark className="w-12 h-12 opacity-80 animate-float" />
+        <div role="status" className="flex items-center gap-2 text-fg-mute text-sm">
+          <span
+            className="w-4 h-4 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
+            aria-hidden="true"
+          />
+          {user ? "Yönlendiriliyorsunuz…" : "Yükleniyor…"}
+        </div>
+      </div>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -62,10 +80,30 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
+    <div className="relative max-w-md mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 -right-14 w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "21s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 14%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 -left-14 w-56 h-56 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "27s",
+          animationDelay: "-9s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 10%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <h1 className="text-title text-fg">
           Giriş Yap
         </h1>
         <p className="text-sm text-fg-soft">
@@ -122,7 +160,7 @@ export default function LoginPage() {
         </div>
 
         <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
-          {loading ? "Giriş yapılıyor…" : "Giriş Yap"}
+          {loading ? "Giriş yapılıyor…" : "Giriş yap"}
         </button>
 
         <div className="text-right">
@@ -148,8 +186,9 @@ export default function LoginPage() {
           href="/register"
           className="text-brand hover:text-brand-strong hover:underline font-semibold transition-colors"
         >
-          Hesap Oluştur
+          Hesap oluştur
         </Link>
+      </div>
       </div>
     </div>
   );

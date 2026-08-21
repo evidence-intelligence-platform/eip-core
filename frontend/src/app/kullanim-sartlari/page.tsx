@@ -22,6 +22,7 @@ export default function KullanimSartlariPage() {
           Sade yazdık; okumak birkaç dakikanızı alır. EİP&apos;yi kullanarak bu
           şartları kabul etmiş olursunuz.
         </p>
+        <p className="text-sm text-fg-mute">Son güncelleme: 21.08.2026</p>
       </header>
 
       <section className="space-y-3">
@@ -87,10 +88,10 @@ export default function KullanimSartlariPage() {
 
       <section className="space-y-3">
         <h2 className="text-xl font-semibold text-fg">
-          Yapay zeka değerlendirmeleri hakkında
+          Yapay zekâ değerlendirmeleri hakkında
         </h2>
         <p className="text-sm leading-relaxed">
-          Değerlendirme raporları yapay zeka desteğiyle hazırlanır. Bu raporlar
+          Değerlendirme raporları yapay zekâ desteğiyle hazırlanır. Bu raporlar
           bir karar değil, karar desteğidir ve hata payı içerebilir.
           &quot;Yetersiz kanıt&quot; sonucu belgenizin sahte olduğu anlamına
           gelmez; yalnızca ilgili gereksinimin o belgeyle doğrulanamadığı

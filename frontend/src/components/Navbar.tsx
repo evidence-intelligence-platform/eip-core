@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
 
@@ -63,6 +63,12 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
   const [acctOpen, setAcctOpen] = useState(false);
+  // The drawer visually presents as a modal panel over `<main>`, so it needs
+  // a real focus trap, not just `inert` while closed — otherwise Tab walks
+  // straight off the last drawer link onto the (only visually obscured)
+  // page content behind the backdrop.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   // A hairline of depth once the page moves — the bar reads as "floating"
   // over content instead of being part of it.
@@ -99,17 +105,60 @@ export default function Navbar() {
     };
   }, [acctOpen]);
 
-  // While the drawer is open, lock body scroll and let Esc close it.
+  // While the drawer is open: lock body scroll, let Esc close it, and trap
+  // Tab/Shift+Tab inside the drawer so focus never reaches the (merely
+  // visually dimmed) page content behind the backdrop. On open, move focus
+  // into the drawer; on close, return it to the button that opened it.
   useEffect(() => {
     if (!open) return;
+    const getFocusable = () =>
+      Array.from(
+        drawerRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled])'
+        ) ?? []
+      );
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (!drawerRef.current?.contains(active)) {
+        // Focus somehow landed outside the drawer (e.g. a browser
+        // extension or programmatic focus) — pull it back in.
+        e.preventDefault();
+        first.focus();
+      }
     };
+    // If the viewport crosses into md+ while the drawer is open (rotation,
+    // window resize), the panel disappears via `md:hidden` but `open` stays
+    // true — leaving body scroll locked with no visible control to unlock
+    // it. Close the drawer the moment the desktop nav takes over.
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onMqChange = () => {
+      if (mq.matches) setOpen(false);
+    };
+    mq.addEventListener("change", onMqChange);
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
+    getFocusable()[0]?.focus();
+    const menuButton = menuButtonRef.current;
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKey);
+      mq.removeEventListener("change", onMqChange);
+      menuButton?.focus();
     };
   }, [open]);
 
@@ -121,7 +170,9 @@ export default function Navbar() {
       </NavLink>
       {isEmployer && (
         <>
-          <NavLink href="/employer/dashboard" accent onNavigate={onNavigate}>
+          {/* Admins get the accent on Moderasyon below — two brass links
+              side by side would dilute the emphasis. */}
+          <NavLink href="/employer/dashboard" accent={!isAdmin} onNavigate={onNavigate}>
             İşveren Paneli
           </NavLink>
           <NavLink href="/candidates" onNavigate={onNavigate}>
@@ -192,8 +243,8 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={() => setAcctOpen((v) => !v)}
-                aria-haspopup="menu"
                 aria-expanded={acctOpen}
+                aria-controls="hesap-menusu"
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-raised transition-colors"
               >
                 <span className="w-7 h-7 rounded-full bg-brand/15 border border-brand/30 text-brand inline-flex items-center justify-center text-xs font-semibold uppercase">
@@ -210,12 +261,14 @@ export default function Navbar() {
                 </span>
               </button>
 
-              {/* Dropdown */}
+              {/* Dropdown — deliberately a plain disclosure (aria-expanded
+                  button + links), not role="menu": menu semantics promise
+                  arrow-key navigation this simple list doesn't implement. */}
               <div
-                role="menu"
+                id="hesap-menusu"
                 // `inert` (not just opacity/pointer-events) keeps a closed menu's
                 // links out of tab order and the accessibility tree — otherwise a
-                // keyboard user tabs onto "Hesabım"/"Çıkış Yap" while invisible.
+                // keyboard user tabs onto "Hesabım"/"Çıkış yap" while invisible.
                 inert={!acctOpen}
                 className={`absolute right-0 top-full mt-2 w-56 origin-top-right card border-line-strong shadow-2xl p-1.5 transition-[opacity,transform] duration-200 ${
                   acctOpen
@@ -228,21 +281,19 @@ export default function Navbar() {
                 </p>
                 <Link
                   href="/hesap"
-                  role="menuitem"
                   onClick={() => setAcctOpen(false)}
                   className="block px-3 py-2 rounded-md text-sm text-fg-soft hover:text-fg hover:bg-raised transition-colors"
                 >
                   Hesabım
                 </Link>
                 <button
-                  role="menuitem"
                   onClick={() => {
                     setAcctOpen(false);
                     logout();
                   }}
                   className="w-full text-left px-3 py-2 rounded-md text-sm text-fg-soft hover:text-err hover:bg-err/10 transition-colors"
                 >
-                  Çıkış Yap
+                  Çıkış yap
                 </button>
               </div>
             </div>
@@ -252,13 +303,13 @@ export default function Navbar() {
                 href="/login"
                 className="px-3 py-1.5 text-xs font-semibold text-fg-soft hover:text-fg transition-colors rounded-sm"
               >
-                Giriş Yap
+                Giriş yap
               </Link>
               <Link
                 href="/register"
-                className="btn-shine px-3.5 py-1.5 rounded-md bg-brand text-brand-ink text-xs font-semibold hover:bg-brand-strong transition-colors"
+                className="btn btn-brand btn-sm btn-shine"
               >
-                Hesap Oluştur
+                Hesap oluştur
               </Link>
             </div>
           )}
@@ -268,6 +319,7 @@ export default function Navbar() {
         <div className="flex md:hidden items-center gap-3">
           {roleBadge}
           <button
+            ref={menuButtonRef}
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Menüyü kapat" : "Menüyü aç"}
@@ -275,8 +327,8 @@ export default function Navbar() {
             aria-controls="mobil-menu"
             className="relative w-10 h-10 -mr-1.5 inline-flex items-center justify-center rounded-md text-fg hover:bg-raised transition-colors"
           >
-            {/* Three bars that morph into an X */}
-            <span className="sr-only">Menü</span>
+            {/* Three bars that morph into an X — the aria-label above is the
+                accessible name; no extra sr-only text needed. */}
             <span aria-hidden="true" className="block w-5 h-4 relative">
               <span
                 className={`absolute left-0 top-0 h-0.5 w-5 bg-current rounded-full transition-transform duration-300 ${
@@ -309,12 +361,18 @@ export default function Navbar() {
       />
       {/* Sliding panel */}
       <div
+        ref={drawerRef}
         id="mobil-menu"
         // Same reasoning as the account dropdown: `inert` removes the closed
         // drawer's links/buttons from tab order and the a11y tree, matching
-        // how the backdrop above is already `aria-hidden` when closed.
+        // how the backdrop above is already `aria-hidden` when closed. While
+        // open, the effect above additionally traps Tab/Shift+Tab inside
+        // this panel so focus can't escape onto the dimmed page behind it.
         inert={!open}
-        className={`fixed inset-x-0 top-16 z-30 md:hidden origin-top bg-ground border-b border-line-strong shadow-2xl transition-[transform,opacity] duration-300 ${
+        // max-h caps the panel below the 4rem (h-16) navbar so on short
+        // landscape viewports the last actions stay reachable by scrolling
+        // inside the drawer — body scroll is locked while it's open.
+        className={`fixed inset-x-0 top-16 z-30 max-h-[calc(100dvh-4rem)] overflow-y-auto md:hidden origin-top bg-ground border-b border-line-strong shadow-2xl transition-[transform,opacity] duration-300 ${
           open
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-3 pointer-events-none"
@@ -344,7 +402,7 @@ export default function Navbar() {
                     }}
                     className="btn btn-quiet flex-1 text-sm"
                   >
-                    Çıkış Yap
+                    Çıkış yap
                   </button>
                 </div>
               </div>
@@ -355,14 +413,14 @@ export default function Navbar() {
                   onClick={close}
                   className="btn btn-quiet flex-1"
                 >
-                  Giriş Yap
+                  Giriş yap
                 </Link>
                 <Link
                   href="/register"
                   onClick={close}
                   className="btn btn-brand btn-shine flex-1"
                 >
-                  Hesap Oluştur
+                  Hesap oluştur
                 </Link>
               </div>
             )}

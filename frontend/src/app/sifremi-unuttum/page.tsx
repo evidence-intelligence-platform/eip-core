@@ -34,10 +34,30 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
+    <div className="relative max-w-md mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 -right-14 w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "24s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 14%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 -left-14 w-56 h-56 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "31s",
+          animationDelay: "-12s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand-strong) 9%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <h1 className="text-title text-fg">
           Şifremi Unuttum
         </h1>
         <p className="text-sm text-fg-soft">
@@ -50,8 +70,12 @@ export default function ForgotPasswordPage() {
         <div className="space-y-4">
           <div
             role="status"
-            className="p-4 bg-ok/10 border border-ok/30 text-ok text-sm rounded-md text-center leading-relaxed"
+            className="relative p-4 pr-16 bg-ok/10 border border-ok/30 text-ok text-sm rounded-md text-left leading-relaxed overflow-hidden"
           >
+            <SealMark
+              className="animate-stamp absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 opacity-80 pointer-events-none"
+              aria-hidden="true"
+            />
             Bu adrese kayıtlı bir hesap varsa, şifre sıfırlama bağlantısı
             gönderildi. Gelen kutunuzu (ve spam klasörünü) kontrol edin —
             bağlantı 30 dakika geçerlidir.
@@ -97,7 +121,7 @@ export default function ForgotPasswordPage() {
             </div>
 
             <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
-              {loading ? "Gönderiliyor…" : "Sıfırlama Bağlantısı Gönder"}
+              {loading ? "Gönderiliyor…" : "Sıfırlama bağlantısı gönder"}
             </button>
           </form>
 
@@ -107,11 +131,12 @@ export default function ForgotPasswordPage() {
               href="/login"
               className="text-brand hover:text-brand-strong hover:underline font-semibold transition-colors"
             >
-              Giriş Yap
+              Giriş yap
             </Link>
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

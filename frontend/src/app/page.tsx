@@ -399,13 +399,15 @@ export default function Home() {
             {STATS.map((s, i) => (
               <div
                 key={s.label}
-                className={`p-6 md:p-8 text-center space-y-1 hover:bg-raised/60 transition-colors border-line/60 ${
+                className={`group p-6 md:p-8 text-center space-y-1 border-line/60 ${
                   i % 2 === 1 ? "border-l" : ""
                 } ${i >= 2 ? "border-t md:border-t-0" : ""} ${
                   i > 0 ? "md:border-l" : ""
                 }`}
               >
-                <div className="text-3xl md:text-4xl font-semibold text-brand font-display">
+                {/* Cells aren't clickable, so no background hover — the
+                    number just warms up a shade as a bit of life. */}
+                <div className="text-3xl md:text-4xl font-semibold text-brand group-hover:text-brand-strong transition-colors font-display">
                   {s.suffix === "%" ? (
                     <>
                       %<CountUp end={s.value} />

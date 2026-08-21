@@ -39,6 +39,23 @@ const AI_STATUS_LABELS: Record<string, string> = {
   CONTRADICTION: "Çelişki",
 };
 
+// Turkish labels for the engine's EvidencePayload.source_type literals
+// (ai-engine/src/models/schemas.py). An unknown value falls back to the raw
+// enum so a newly added source type stays visible, just untranslated.
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  GITHUB: "GitHub",
+  CHATGPT: "ChatGPT",
+  LINKEDIN: "LinkedIn",
+  PDF_RESUME: "PDF Özgeçmiş",
+  LINKEDIN_URL: "LinkedIn Profili",
+  PORTFOLIO_LINK: "Portföy Bağlantısı",
+  CERTIFICATE_LICENSE: "Sertifika / Ehliyet",
+  CHATGPT_EXPORT: "Yapay Zekâ Sohbet Geçmişi",
+  CASE_STUDY_BLOG: "Vaka Çalışması / Blog",
+  IMAGE_DOCUMENT: "Belge Görseli",
+  SCANNED_PDF: "Taranmış PDF",
+};
+
 const REVIEW_STATUS_BADGES: Record<string, { label: string; className: string }> = {
   pending: { label: "İnceleme Bekliyor", className: "bg-warn/10 text-warn border-warn/30" },
   approved: { label: "Onaylandı", className: "bg-ok/10 text-ok border-ok/30" },
@@ -49,7 +66,10 @@ const statusParam = (tab: TabKey): ModerationReviewStatus | undefined =>
   tab === "all" ? undefined : tab;
 
 const EMPTY_STATES: Record<TabKey, string> = {
-  pending: "Bekleyen kanıt yok 🎉",
+  // The seal above this text already carries the "all clear" moment
+  // silently — an emoji here would be the one tonal outlier in an
+  // otherwise restrained, editorial voice.
+  pending: "Bekleyen kanıt yok.",
   approved: "Henüz onaylanmış kanıt bulunmuyor.",
   rejected: "Henüz reddedilmiş kanıt bulunmuyor.",
   all: "Moderasyon kuyruğunda henüz kanıt bulunmuyor.",
@@ -72,6 +92,9 @@ function formatDateTime(value?: string | null): string | null {
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
 }
+
+const POPUP_BLOCKED_MESSAGE =
+  "Açılır pencere tarayıcı tarafından engellendi. Lütfen bu site için açılır pencerelere izin verip tekrar deneyin.";
 
 /**
  * Media needs the Authorization header, so it cannot be loaded through a
@@ -125,19 +148,46 @@ function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
 
   // Used for both PDFs and the generic "other" fallback — either way the
   // file is fetched as an authenticated blob and opened in a new tab.
+  //
+  // Neither path passes the "noopener" feature: per the HTML spec,
+  // window.open() always returns null when the features string contains
+  // noopener, which would make a genuine popup block indistinguishable from
+  // a successful open. Severing tab.opener by hand keeps the same isolation
+  // while a null return still means a real block. (The blob URL is
+  // same-origin anyway, so there is no reverse-tabnabbing surface here.)
+  //
+  // On the first open for a given card there is no cached object URL yet, so
+  // the blob has to be fetched before we know what to open — but a
+  // window.open() called *after* that await falls outside the browser's
+  // user-activation window and gets silently popup-blocked in Firefox/Safari
+  // (and sometimes Chrome, under latency). To keep the open() call inside the
+  // click's activation window, the tab is opened synchronously, blank, right
+  // here, and its location is filled in once the blob URL is ready.
   const openFile = async () => {
     setPdfError(null);
     if (pdfUrlRef.current) {
-      window.open(pdfUrlRef.current, "_blank", "noopener");
+      const cached = window.open(pdfUrlRef.current, "_blank");
+      if (!cached) {
+        setPdfError(POPUP_BLOCKED_MESSAGE);
+        return;
+      }
+      cached.opener = null;
       return;
     }
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      setPdfError(POPUP_BLOCKED_MESSAGE);
+      return;
+    }
+    tab.opener = null;
     try {
       setPdfLoading(true);
       const blob = await fetchModerationMedia(item.id);
       const url = URL.createObjectURL(blob);
       pdfUrlRef.current = url;
-      window.open(url, "_blank", "noopener");
+      tab.location.href = url;
     } catch (err: unknown) {
+      tab.close();
       setPdfError(err instanceof Error ? err.message : "Belge görüntülenemedi.");
     } finally {
       setPdfLoading(false);
@@ -155,7 +205,7 @@ function MediaPreview({ item }: { item: ModerationEvidenceItem }) {
       );
     }
     if (!imageUrl) {
-      return <div className="h-40 bg-raised rounded-md animate-pulse" aria-hidden="true" />;
+      return <div className="skeleton h-40 rounded-md" aria-hidden="true" />;
     }
     return (
       <a
@@ -211,6 +261,11 @@ function EvidenceCard({
   onDecide: (item: ModerationEvidenceItem, decision: "approved" | "rejected", note?: string) => void;
 }) {
   const [note, setNote] = useState(initialNote ?? "");
+  // Reject is the higher-cost mistake: it can hide legitimate evidence from
+  // an employer, and once decided there is no in-app way to flip it back to
+  // pending. Swaps the decision buttons for a themed in-place "emin
+  // misiniz?" panel instead of a bare window.confirm() dialog.
+  const [confirmReject, setConfirmReject] = useState(false);
   const isPending = item.review_status === "pending";
   const aiLabel = AI_STATUS_LABELS[item.status] ?? item.status;
   const aiStyle = AI_STATUS_STYLES[item.status] ?? "bg-raised text-fg-soft border-line-strong";
@@ -224,17 +279,22 @@ function EvidenceCard({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-fg tabular-nums">Kanıt #{item.id}</span>
-          <span className="text-xs font-mono text-fg-soft" title="Aday kimliği">
+          {/* Visible micro labels, not title tooltips: keyboard and touch
+              users never see a title, so the ids read as bare noise without
+              them. */}
+          <span className="text-xs font-mono text-fg-soft">
+            <span className="font-sans font-medium text-fg-mute">Aday:</span>{" "}
             {item.candidate_external_id}
           </span>
-          <span className="text-xs font-mono text-fg-mute" title="Gereksinim kimliği">
+          <span className="text-xs font-mono text-fg-mute">
+            <span className="font-sans font-medium">Gereksinim:</span>{" "}
             {item.requirement_external_id}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {item.source_type && (
             <span className="badge uppercase tracking-wider bg-raised text-fg-soft border-line-strong">
-              {item.source_type}
+              {SOURCE_TYPE_LABELS[item.source_type] ?? item.source_type}
             </span>
           )}
           <span className={`badge uppercase tracking-wider ${aiStyle}`}>
@@ -307,38 +367,61 @@ function EvidenceCard({
               disabled={deciding}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Örn: Sertifika görseli net ve okunabilir."
+              aria-describedby={`moderation-note-hint-${item.id}`}
               className="field text-xs leading-relaxed"
             />
+            {/* The backend mails the candidate on every decision — approval and
+                rejection alike — and quotes this note verbatim in that mail. The
+                admin has to know the note is candidate-facing *before* typing it. */}
+            <p id={`moderation-note-hint-${item.id}`} className="mt-1.5 text-[11px] text-fg-mute leading-relaxed">
+              Bu not, karar e-postasıyla adaya iletilir.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={deciding}
-              onClick={() => onDecide(item, "approved", note)}
-              className="flex-1 py-2.5 bg-ok/10 hover:bg-ok/20 border border-ok/30 text-ok rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
-            >
-              {deciding ? "Kaydediliyor…" : "Onayla"}
-            </button>
-            <button
-              type="button"
-              disabled={deciding}
-              onClick={() => {
-                // Reject is the higher-cost mistake: it can hide legitimate
-                // evidence from an employer, and once decided there is no
-                // in-app way to flip it back to pending.
-                if (
-                  window.confirm(
-                    "Bu kanıtı reddetmek istediğinize emin misiniz? Reddedilen kanıt, aday yeniden yüklemedikçe raporda görünmez."
-                  )
-                ) {
-                  onDecide(item, "rejected", note);
-                }
-              }}
-              className="flex-1 py-2.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
-            >
-              {deciding ? "Kaydediliyor…" : "Reddet"}
-            </button>
-          </div>
+          {confirmReject ? (
+            <div className="rounded-md border border-err/30 bg-err/5 p-3 space-y-2 animate-fade-in-up">
+              <p className="text-xs text-err leading-relaxed">
+                Bu kanıtı reddetmek istediğinize emin misiniz? Reddedilen kanıt, aday yeniden
+                yüklemedikçe raporda görünmez.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={deciding}
+                  onClick={() => setConfirmReject(false)}
+                  className="btn btn-quiet flex-1 text-xs py-2 disabled:opacity-50"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  disabled={deciding}
+                  onClick={() => onDecide(item, "rejected", note)}
+                  className="flex-1 py-2 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {deciding ? "Kaydediliyor…" : "Evet, Reddet"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={deciding}
+                onClick={() => onDecide(item, "approved", note)}
+                className="flex-1 py-2.5 bg-ok/10 hover:bg-ok/20 border border-ok/30 text-ok rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {deciding ? "Kaydediliyor…" : "Onayla"}
+              </button>
+              <button
+                type="button"
+                disabled={deciding}
+                onClick={() => setConfirmReject(true)}
+                className="flex-1 py-2.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Reddet
+              </button>
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -346,15 +429,17 @@ function EvidenceCard({
 }
 
 function CardSkeleton() {
+  // Same .skeleton shimmer recipe (globals.css) the report and jobs loading
+  // states use, so every loading surface speaks one visual language.
   return (
-    <div className="card p-6 space-y-4 animate-pulse" aria-hidden="true">
+    <div className="card p-6 space-y-4" aria-hidden="true">
       <div className="flex items-center justify-between">
-        <div className="h-4 w-40 bg-raised rounded" />
-        <div className="h-4 w-24 bg-raised rounded" />
+        <div className="skeleton h-4 w-40" />
+        <div className="skeleton h-4 w-24" />
       </div>
-      <div className="h-3 w-full bg-raised/70 rounded" />
-      <div className="h-3 w-5/6 bg-raised/70 rounded" />
-      <div className="h-24 w-full bg-raised/50 rounded-md" />
+      <div className="skeleton h-3 w-full" />
+      <div className="skeleton h-3 w-5/6" />
+      <div className="skeleton h-24 w-full rounded-md" />
     </div>
   );
 }
@@ -380,6 +465,15 @@ export default function ModerationPanel() {
   // removal unmounts the card (discarding its local textarea state), so the
   // remounted card re-seeds from here instead of silently wiping the text.
   const [failedNotes, setFailedNotes] = useState<Record<number, string>>({});
+  // Mirror of `items` for handlers that resume after an await and must decide
+  // something *before* React runs their setItems updater — an updater's result
+  // is not observable at the call site, so the rollback below reads the list
+  // from here to keep `total` in step with what it actually re-inserts.
+  const itemsRef = useRef<ModerationEvidenceItem[]>(items);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const selectTab = (tab: TabKey) => {
     activeTabRef.current = tab;
@@ -471,6 +565,7 @@ export default function ModerationPanel() {
       });
       setTotal(data.total);
     } catch (err: unknown) {
+      if (activeTabRef.current !== tab) return; // stale: viewer moved on
       setError(err instanceof Error ? err.message : "Daha fazla kayıt yüklenemedi.");
     } finally {
       setLoadingMore(false);
@@ -482,6 +577,10 @@ export default function ModerationPanel() {
     decision: "approved" | "rejected",
     note?: string
   ) => {
+    // Guard against a double-trigger firing a second PATCH while one is
+    // already in flight — a duplicate would shift the optimistic counts and
+    // total twice for a single decision.
+    if (decidingIds.has(item.id)) return;
     // The tab the decision was made on; a failed request must roll back
     // *that* tab's list, not whichever tab the viewer switched to meanwhile.
     const tab = activeTab;
@@ -533,9 +632,18 @@ export default function ModerationPanel() {
       });
     } catch (err: unknown) {
       // The optimistic removal unmounted the card and its typed note with
-      // it; keep the note so the restored card can re-seed its textarea.
-      if (tab !== "all" && note) {
-        setFailedNotes((cur) => ({ ...cur, [item.id]: note }));
+      // it; keep the note so the restored card can re-seed its textarea. An
+      // emptied note has to erase the stored copy just as decisively — on a
+      // second failed attempt the remounted card would otherwise resurrect
+      // the text the admin had just cleared.
+      if (tab !== "all") {
+        setFailedNotes((cur) => {
+          if (note?.trim()) return { ...cur, [item.id]: note };
+          if (!(item.id in cur)) return cur;
+          const next = { ...cur };
+          delete next[item.id];
+          return next;
+        });
       }
       // Roll back only this item's own optimistic change; concurrent
       // decisions on other cards keep their state. If the viewer switched
@@ -546,13 +654,17 @@ export default function ModerationPanel() {
         if (tab === "all") {
           setItems((cur) => cur.map((i) => (i.id === item.id ? item : i)));
         } else {
+          // Only a real re-insertion may give the total back: if a refetch
+          // (tab switch and back) already returned the record to the list,
+          // counting it again leaves a phantom "Daha fazla göster" page.
+          const alreadyListed = itemsRef.current.some((i) => i.id === item.id);
           setItems((cur) => {
             if (cur.some((i) => i.id === item.id)) return cur;
             const next = [...cur];
             next.splice(Math.min(Math.max(itemIndex, 0), next.length), 0, item);
             return next;
           });
-          setTotal((t) => t + 1);
+          if (!alreadyListed) setTotal((t) => t + 1);
         }
       }
       setCounts((cur) => {
@@ -595,7 +707,17 @@ export default function ModerationPanel() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto py-8 px-2 sm:px-4">
+    <div className="relative space-y-8 max-w-5xl mx-auto py-8 px-2 sm:px-4">
+      {/* Same quiet brand tint the landing, jobs and employer dashboard pages
+          open with — the header read noticeably flatter without it. */}
+      <div
+        className="absolute inset-x-0 top-0 h-[20rem] -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(60% 70% at 50% 0%, color-mix(in oklab, var(--brand) 6%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line pb-6">
         <div className="space-y-1">
@@ -629,17 +751,17 @@ export default function ModerationPanel() {
               type="button"
               aria-pressed={isActive}
               onClick={() => selectTab(tab.key)}
-              className={`px-4 py-2 rounded-md text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-full text-xs font-semibold border transition-all duration-200 flex items-center gap-1.5 ${
                 isActive
-                  ? "bg-brand/10 border-brand/40 text-brand"
-                  : "bg-surface border-line text-fg-soft hover:text-fg hover:border-line-strong"
+                  ? "bg-brand border-brand text-brand-ink shadow-lg shadow-brand/20"
+                  : "bg-surface border-line text-fg-soft hover:text-fg hover:border-brand/50"
               }`}
             >
               {tab.label}
               {typeof count === "number" && (
                 <span
                   className={`px-1.5 py-0.5 rounded-full text-[10px] tabular-nums ${
-                    isActive ? "bg-brand/15 text-brand-strong" : "bg-raised text-fg-mute"
+                    isActive ? "bg-brand-ink/15 text-brand-ink" : "bg-raised text-fg-mute"
                   }`}
                 >
                   {count}
@@ -658,7 +780,8 @@ export default function ModerationPanel() {
 
       {/* Evidence list */}
       {loading ? (
-        <div className="space-y-4">
+        <div className="space-y-4" role="status" aria-busy="true">
+          <span className="sr-only">Moderasyon listesi yükleniyor…</span>
           <CardSkeleton />
           <CardSkeleton />
           <CardSkeleton />

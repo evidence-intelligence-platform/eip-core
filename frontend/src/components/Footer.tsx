@@ -65,7 +65,7 @@ export default function Footer() {
                       href="/register"
                       className="text-fg-soft hover:text-fg transition-colors"
                     >
-                      Hesap Oluştur
+                      Hesap oluştur
                     </Link>
                   </li>
                   <li>
@@ -73,7 +73,7 @@ export default function Footer() {
                       href="/login"
                       className="text-fg-soft hover:text-fg transition-colors"
                     >
-                      Giriş Yap
+                      Giriş yap
                     </Link>
                   </li>
                 </>

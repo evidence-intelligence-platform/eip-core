@@ -1,4 +1,8 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+// The root layout's title is a flat string, so name the panel's tab here.
+export const metadata: Metadata = { title: "Aday Paneli — EİP" };
 
 /** Slim cross-link back to the employer side — the seam between the two
     platforms. Static and server-rendered: it never depends on auth state,

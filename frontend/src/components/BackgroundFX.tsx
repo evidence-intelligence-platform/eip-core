@@ -5,8 +5,9 @@ import { useEffect, useRef } from "react";
 /**
  * Ambient, interactive background for the whole app — two layers:
  *
- * 1. A faint ledger grid (inline SVG, no requests): the paper the platform's
- *    "Mühür" identity writes on. Sits under everything at ~2% opacity.
+ * 1. A faint ledger grid (CSS gradients, no requests): the paper the
+ *    platform's "Mühür" identity writes on. Sits under everything at ~2%
+ *    opacity.
  * 2. A brass glow that follows the pointer. Desktop-only (pointer: fine),
  *    rAF-throttled, transform/opacity only — no layout work per frame.
  *
@@ -57,12 +58,15 @@ export default function BackgroundFX() {
 
   return (
     <div aria-hidden="true" className="fixed inset-0 -z-20 pointer-events-none overflow-hidden">
-      {/* Ledger paper grid */}
+      {/* Ledger paper grid — 1px brass hairlines drawn with CSS gradients so
+          the color stays on the --brand token instead of a hex frozen
+          inside a data URI. */}
       <div
         className="absolute inset-0 opacity-[0.022]"
         style={{
           backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56'%3E%3Cpath d='M56 .5H0M.5 0v56' fill='none' stroke='%23e3a84e' stroke-width='1'/%3E%3C/svg%3E\")",
+            "linear-gradient(var(--brand) 1px, transparent 1px), linear-gradient(90deg, var(--brand) 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
         }}
       />
       {/* Pointer-following brass glow */}

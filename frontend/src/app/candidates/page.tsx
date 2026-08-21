@@ -17,6 +17,15 @@ export default function CandidatesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  // Separate from `error`: that one drives the list panel's loading/error/
+  // empty branch. A failed "Manuel Aday Ekle" submission (e.g. duplicate
+  // external_id) must not make an already-loaded candidate list disappear
+  // behind the fetch-style error screen.
+  const [createError, setCreateError] = useState<string | null>(null);
+  // Confirms a successful "Manuel Aday Ekle" submission — the form otherwise
+  // just clears silently while the list refetches. Same pattern as the
+  // requirements page's createSuccess.
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
   const fetchCandidates = async () => {
     try {
@@ -53,17 +62,19 @@ export default function CandidatesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setError(null);
+    setCreateError(null);
+    setCreateSuccess(null);
     try {
       await createCandidate({ external_id: newExternalId, name: newName });
+      setCreateSuccess(`"${newName.trim()}" adayı eklendi.`);
       setNewExternalId("");
       setNewName("");
       await fetchCandidates();
     } catch (err: unknown) {
       if (err instanceof Error) {
-        setError(err.message);
+        setCreateError(err.message);
       } else {
-        setError("Bir hata oluştu.");
+        setCreateError("Bir hata oluştu.");
       }
     } finally {
       setSubmitting(false);
@@ -95,7 +106,16 @@ export default function CandidatesPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto py-12 px-4">
+    <div className="relative space-y-8 max-w-6xl mx-auto py-12 px-4">
+      {/* Same quiet brand tint the landing, jobs and candidate-hub pages open with */}
+      <div
+        className="absolute inset-x-0 top-0 h-[20rem] -z-10 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(60% 70% at 50% 0%, color-mix(in oklab, var(--brand) 6%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
       <div className="space-y-3">
         <p className="eyebrow">İşveren alanı</p>
         <h1 className="text-title text-fg">Aday havuzu</h1>
@@ -109,7 +129,20 @@ export default function CandidatesPage() {
         <div className="md:col-span-2 space-y-4">
           <h2 className="text-lg font-semibold text-fg tracking-tight">Aday Listesi</h2>
           {loading ? (
-            <p className="text-fg-soft text-sm">Yükleniyor…</p>
+            // Skeleton rows shaped like the real candidate cards below — same
+            // pattern jobs/page.tsx uses for its own list — so the two-column
+            // grid doesn't pop in around a bare loading sentence.
+            <div className="grid gap-4" role="status" aria-label="Aday listesi yükleniyor" aria-busy="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="card p-4 flex justify-between items-center gap-4">
+                  <div className="space-y-2 flex-1">
+                    <div className="skeleton h-5 w-2/5" />
+                    <div className="skeleton h-3 w-1/4" />
+                  </div>
+                  <div className="skeleton h-9 w-32 shrink-0 rounded-md" />
+                </div>
+              ))}
+            </div>
           ) : error ? (
             // A 401 here previously fell through to "Kayıtlı aday
             // bulunamadı." — indistinguishable from a genuinely empty list,
@@ -133,7 +166,14 @@ export default function CandidatesPage() {
               </div>
             </div>
           ) : candidates.length === 0 ? (
-            <p className="text-fg-mute text-sm">Kayıtlı aday bulunamadı.</p>
+            <div className="card p-8 text-center space-y-3">
+              <MagnifierDoc className="h-20 w-auto mx-auto opacity-80" />
+              <p className="text-fg-soft text-sm">Kayıtlı aday bulunamadı.</p>
+              <p className="text-fg-mute text-xs max-w-sm mx-auto leading-relaxed">
+                Henüz başvuran veya eklenen bir aday yok. Adaylar bir ilana
+                başvurduğunda ya da sağdaki formla eklendiğinde burada listelenir.
+              </p>
+            </div>
           ) : (
             <div className="grid gap-4">
               {candidates.map((c) => (
@@ -158,9 +198,14 @@ export default function CandidatesPage() {
         <div>
           <div className="card p-6 sticky top-28 space-y-4">
             <h2 className="text-lg font-semibold text-fg tracking-tight">Manuel Aday Ekle</h2>
-            {error && (
+            {createSuccess && (
+              <div role="status" className="p-3 bg-ok/10 border border-ok/30 text-ok text-xs rounded-md font-medium">
+                {createSuccess}
+              </div>
+            )}
+            {createError && (
               <div role="alert" className="p-3 bg-err/10 border border-err/30 text-err rounded-md text-xs">
-                {error}
+                {createError}
               </div>
             )}
 
@@ -171,6 +216,7 @@ export default function CandidatesPage() {
                   id="aday-id"
                   type="text"
                   required
+                  disabled={submitting}
                   value={newExternalId}
                   onChange={(e) => setNewExternalId(e.target.value)}
                   className="field"
@@ -183,6 +229,7 @@ export default function CandidatesPage() {
                   id="aday-ad"
                   type="text"
                   required
+                  disabled={submitting}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="field"

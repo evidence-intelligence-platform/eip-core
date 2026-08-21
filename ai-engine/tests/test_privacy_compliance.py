@@ -14,6 +14,7 @@ Covers the three legally-relevant gaps found by the launch audit:
 
 import uuid
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
 
@@ -25,6 +26,7 @@ from src.db.models import (
     ExplainabilityReport,
     JobApplication,
     JobPosting,
+    PasswordResetToken,
     Requirement,
     UserAccount,
 )
@@ -734,8 +736,15 @@ def test_deletion_survives_enforced_foreign_keys(keyed_client):
     only matters here: with keys off, deleting an application before the
     report that references it merely orphans the report; with keys on it
     raises IntegrityError and the right to be forgotten silently fails.
+
+    The scenario also plants the two account-scoped rows nothing else cleans
+    up — a PasswordResetToken (forgot/reset only ever marks rows used) and a
+    free-form Requirement (external_id outside the "req_job_" namespace) —
+    both cascade-less foreign keys to useraccount that used to abort the
+    erasure on PostgreSQL.
     """
     _email, _password, token = _register(keyed_client, "employer")
+    employer_id = keyed_client.get("/api/v1/auth/me", headers=_auth(token)).json()["id"]
     job_resp = keyed_client.post(
         "/api/v1/jobs/",
         json={
@@ -768,6 +777,20 @@ def test_deletion_survives_enforced_foreign_keys(keyed_client):
             match_matrix="{}",
             final_summary="Ozet.",
         ))
+        # An outstanding reset token, as any user who ever hit
+        # /forgot-password would have.
+        session.add(PasswordResetToken(
+            user_id=employer_id,
+            token_hash=uuid.uuid4().hex,
+            expires_at=datetime.utcnow() + timedelta(minutes=30),
+        ))
+        # A requirement created via POST /api/v1/requirements rather than by
+        # publishing a posting: not in the "req_job_" namespace.
+        session.add(Requirement(
+            external_id=f"req_custom_{uuid.uuid4().hex[:8]}",
+            description="Serbest kriter: forklift ehliyeti.",
+            created_by_user_id=employer_id,
+        ))
         session.commit()
 
     with _foreign_keys_enforced():
@@ -781,6 +804,12 @@ def test_deletion_survives_enforced_foreign_keys(keyed_client):
                 ExplainabilityReport.candidate_external_id == cand_ext
             )
         ).all() == []
+        assert session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.user_id == employer_id)
+        ).all() == [], "reset tokens must not outlive the erased account"
+        assert session.exec(
+            select(Requirement).where(Requirement.created_by_user_id == employer_id)
+        ).all() == [], "free-form requirements must not outlive the erased account"
 
 
 def test_delete_me_requires_user_token(keyed_client):

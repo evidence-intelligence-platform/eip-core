@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DOCUMENT_ACCEPT, DOCUMENT_HINT, validateDocument } from "@/lib/uploads";
 import { SELECTABLE_CATEGORIES } from "@/lib/categories";
 import {
@@ -21,7 +22,7 @@ import {
   FileAnalysisData,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { IconHumanReview } from "@/components/illustrations";
+import { IconHumanReview, LedgerCheck, SealMark } from "@/components/illustrations";
 import { CategoryIcon } from "@/components/CategoryIcon";
 
 const AI_STATUS_LABELS: Record<string, string> = {
@@ -38,10 +39,20 @@ const AI_STATUS_STYLES: Record<string, string> = {
 };
 
 export default function CandidateEvidenceHub() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
+  // Whether `jobs` reflects a *successful* read. An empty `jobs` because the
+  // request failed says nothing about any single posting — getJobTitle needs
+  // to tell that apart from a genuinely absent posting.
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [interests, setInterests] = useState<string[]>([]);
   const [savingInterests, setSavingInterests] = useState(false);
+  // Ticket counter for toggleInterest's race guard — see the comment there.
+  const interestsReqIdRef = useRef(0);
+  // The last set the server confirmed, which is what a failed save must roll
+  // back to — see toggleInterest.
+  const lastSavedInterestsRef = useRef<string[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,23 +83,46 @@ export default function CandidateEvidenceHub() {
   // is what broke the evidence chain between candidate and employer.
   const candidateExtId = user?.candidate_external_id ?? "";
 
+  // An employer or admin landing here would otherwise see the applications
+  // *sent to them* presented as "Başvurularım" through a candidate's eyes —
+  // they get the mirror of the employer dashboard's role-guard card instead.
+  const isNonCandidate = user?.role === "employer" || user?.role === "admin";
+
   // Toggle one interest category and persist the new set. Optimistic: the
   // chip flips immediately, and a failed save rolls back with a message.
+  //
+  // Two rapid clicks fire two overlapping PUT requests; nothing guarantees
+  // they resolve in the order they were sent. interestsReqIdRef tags each
+  // call with a ticket number so an older response that arrives after a
+  // newer one is ignored instead of silently reverting the newer selection
+  // (and so "Kaydediliyor…" only clears once the *latest* save settles).
+  //
+  // The rollback reads lastSavedInterestsRef, not the value this click saw on
+  // screen: after two clicks the second one's local "before" is already the
+  // first one's optimistic guess, so if both saves fail, restoring it would
+  // leave an unsaved selection ticked and looking stored.
   const toggleInterest = async (key: string) => {
     const next = interests.includes(key)
       ? interests.filter((k) => k !== key)
       : [...interests, key];
-    const prev = interests;
     setInterests(next);
+    const reqId = ++interestsReqIdRef.current;
     setSavingInterests(true);
     try {
       const saved = await setMyInterests(next);
-      setInterests(saved);
+      lastSavedInterestsRef.current = saved;
+      if (reqId === interestsReqIdRef.current) {
+        setInterests(saved);
+      }
     } catch {
-      setInterests(prev);
-      setError("İlgi alanları kaydedilemedi. Lütfen tekrar deneyin.");
+      if (reqId === interestsReqIdRef.current) {
+        setInterests(lastSavedInterestsRef.current);
+        setError("İlgi alanları kaydedilemedi. Lütfen tekrar deneyin.");
+      }
     } finally {
-      setSavingInterests(false);
+      if (reqId === interestsReqIdRef.current) {
+        setSavingInterests(false);
+      }
     }
   };
 
@@ -105,9 +139,13 @@ export default function CandidateEvidenceHub() {
         getMyInterests(),
       ]);
       setJobs(jobsRes.status === "fulfilled" ? jobsRes.value : []);
+      setJobsLoaded(jobsRes.status === "fulfilled");
       setApplications(appsRes.status === "fulfilled" ? appsRes.value : []);
       setEvidences(evRes.status === "fulfilled" ? evRes.value : []);
       setInterests(intRes.status === "fulfilled" ? intRes.value : []);
+      if (intRes.status === "fulfilled") {
+        lastSavedInterestsRef.current = intRes.value;
+      }
 
       // A 404 on the evidence call just means this candidate has no record
       // yet (they have not applied anywhere) — that is an empty state, not a
@@ -132,11 +170,24 @@ export default function CandidateEvidenceHub() {
     }
   };
 
+  // Guard: visitors go to /login instead of a dead-end 401 banner — same
+  // pattern as hesap/page.tsx. A stored token with no profile is *not* a
+  // visitor: AuthProvider deliberately keeps a token whose /auth/me call died
+  // on a 5xx or a dropped connection, so redirecting on `!user` alone would
+  // undo that and turn a brief engine outage into a forced re-login.
+  useEffect(() => {
+    if (!authLoading && !user && !token) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, token, router]);
+
   useEffect(() => {
     // AuthProvider restores the bearer token in its own mount effect, which
     // runs *after* this one; fetching while it is still loading would 401 on
-    // getApplications and flash a misleading "giriş yapın" banner.
-    if (authLoading) return;
+    // getApplications and flash a misleading "giriş yapın" banner. Visitors
+    // are being redirected and non-candidates only see the role-guard card,
+    // so neither should fire candidate-scoped requests.
+    if (authLoading || !user || isNonCandidate) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/auth-ready, the standard data-load pattern used throughout this app
     fetchData();
   }, [authLoading, user]);
@@ -147,6 +198,10 @@ export default function CandidateEvidenceHub() {
     const problem = validateDocument(selected);
     if (problem) {
       setAnalysisError(problem);
+      // Rejected or not, picking a file ends the previous document's verdict:
+      // the panel carries no filename, so leaving it under this error would
+      // read as if it belonged to the file that was just refused.
+      setAnalysisResult(null);
       e.target.value = "";
       return;
     }
@@ -162,7 +217,13 @@ export default function CandidateEvidenceHub() {
     if (!file) return;
 
     if (!candidateExtId) {
-      setAnalysisError("Belge yüklemek için giriş yapmanız gerekiyor.");
+      // A signed-in user without a candidate id is not a visitor — telling
+      // them to "log in" when they already have would be a dead end.
+      setAnalysisError(
+        user
+          ? "Aday profiliniz doğrulanamadı. Lütfen çıkış yapıp yeniden giriş yapın."
+          : "Belge yüklemek için giriş yapmanız gerekiyor."
+      );
       return;
     }
 
@@ -182,6 +243,10 @@ export default function CandidateEvidenceHub() {
       if (res.success) {
         setAnalysisResult(res.data);
         setAnalysisError(null);
+        // The verdict is on screen; drop the file so a second click on the
+        // submit button cannot send the same document to /extract again.
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         // Separate from `error`: fetchData() below clears that one, which used
         // to wipe this message off the screen a moment after it appeared.
@@ -190,9 +255,13 @@ export default function CandidateEvidenceHub() {
 
       await fetchData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      }
+      // Form-local error, next to the submit button — the page-top banner
+      // belongs to fetchData. Only ApiError carries a localized message.
+      setAnalysisError(
+        err instanceof ApiError
+          ? err.message
+          : "Belgeniz analiz edilemedi. Lütfen tekrar deneyin."
+      );
     } finally {
       setAnalyzing(false);
     }
@@ -208,7 +277,13 @@ export default function CandidateEvidenceHub() {
       setAccError(null);
 
       if (!candidateExtId) {
-        setAccError("Deneyim eklemek için giriş yapmanız gerekiyor.");
+        // Same distinction as handleAnalyze: signed-in but profile-less is
+        // not the same problem as not being signed in at all.
+        setAccError(
+          user
+            ? "Aday profiliniz doğrulanamadı. Lütfen çıkış yapıp yeniden giriş yapın."
+            : "Deneyim eklemek için giriş yapmanız gerekiyor."
+        );
         return;
       }
 
@@ -259,17 +334,47 @@ export default function CandidateEvidenceHub() {
       setAccProofLink("");
       await fetchData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      }
+      // Same reasoning as handleAnalyze: keep the failure next to the form
+      // it belongs to instead of the page-top fetch banner.
+      setAccError(
+        err instanceof ApiError
+          ? err.message
+          : "Deneyiminiz kaydedilemedi. Lütfen tekrar deneyin."
+      );
     } finally {
       setPublishingAcc(false);
     }
   };
 
+  // `jobs` only carries publicly listed (active) postings, so a miss here
+  // almost always means the posting was closed after this application —
+  // say that instead of echoing a bare id back at the reader. That reading
+  // only holds once the list actually arrived: when getJobs() failed, `jobs`
+  // is empty for a reason that has nothing to do with these postings, and
+  // labelling every card "kapatıldı" would state a closure that never
+  // happened. Stay neutral until we know.
   const getJobTitle = (jobId: number) => {
     const j = jobs.find((job) => job.id === jobId);
-    return j ? j.title : `İş İlanı #${jobId}`;
+    if (j) return j.title;
+    return jobsLoaded ? `İlan kapatıldı (#${jobId})` : `İş İlanı #${jobId}`;
+  };
+
+  // The evidence rows carry no title of their own (the typed title lives
+  // inside the analyzed raw text, which this endpoint does not return), so
+  // the submission moment is what tells otherwise identical cards apart.
+  // created_at is a naive UTC timestamp from the engine; pin it to UTC
+  // before parsing unless it already carries an offset.
+  const formatEvidenceDate = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(/Z|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   // "Doğrulanmış" must mean AI-verified, matching the candidate's own profile
@@ -289,6 +394,78 @@ export default function CandidateEvidenceHub() {
   const accomplishmentEvidences = evidences
     .filter((e) => e.requirement_external_id === "req_general_accomplishment")
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+
+  // Neither this endpoint nor the backend query guarantees any ordering, so
+  // the raw `applications` array can come back oldest-first. Sort newest
+  // first here — by created_at, falling back to id when timestamps are
+  // missing or tied — so both the "Başvurularım" list and the "Tam raporu
+  // incele" shortcut below agree on which application is the most recent.
+  const sortedApplications = [...applications].sort((a, b) => {
+    const byDate = (b.created_at ?? "").localeCompare(a.created_at ?? "");
+    if (byDate !== 0) return byDate;
+    return (b.id ?? 0) - (a.id ?? 0);
+  });
+
+  // Role guard notice — the mirror of the employer dashboard's card, shown
+  // to an employer or admin who lands on the candidate side of the platform.
+  if (isNonCandidate) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4 text-center">
+        <div className="card p-8 space-y-4">
+          <LedgerCheck className="w-28 h-auto mx-auto" />
+          <h1 className="text-2xl font-semibold text-fg tracking-tight">Aday Paneli</h1>
+          <p className="text-sm text-fg-soft leading-relaxed">
+            Burası adayların belgelerini yükleyip başvurularını takip ettiği
+            aday panelidir. İlanlarınızı yönetmek ve gelen başvuruları
+            değerlendirmek için işveren panelini kullanabilirsiniz.
+          </p>
+          <div className="pt-2 flex justify-center">
+            <Link href="/employer/dashboard" className="btn btn-brand btn-shine btn-sm">
+              İşveren Paneline Git
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // A kept token with no profile: /auth/me failed on something that says
+  // nothing about the session, so the redirect guard let this user stay.
+  // AuthProvider exposes no way to re-run its mount fetch, which is why the
+  // retry is a reload — that fetch runs on mount and nowhere else.
+  if (!authLoading && !user && token) {
+    return (
+      <div className="max-w-md mx-auto my-16 card p-8 text-center space-y-4 animate-fade-in-up">
+        <SealMark className="w-10 h-10 mx-auto" />
+        <h1 className="text-lg font-semibold text-fg tracking-tight">
+          Hesap bilgileriniz alınamadı
+        </h1>
+        <p className="text-sm text-fg-soft leading-relaxed">
+          Oturumunuz açık, ancak hesap bilgileriniz şu anda getirilemedi.
+          Bu genellikle geçici bir aksaklıktır; birkaç saniye sonra tekrar
+          deneyebilirsiniz.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="btn btn-brand btn-shine btn-sm"
+        >
+          Tekrar dene
+        </button>
+      </div>
+    );
+  }
+
+  // While auth resolves (or a visitor is being redirected to /login), hold
+  // quietly instead of flashing an empty panel — same as hesap/page.tsx.
+  if (authLoading || !user) {
+    return (
+      <div className="max-w-md mx-auto my-16 card p-8 text-center space-y-4 animate-fade-in-up">
+        <SealMark className="w-10 h-10 mx-auto" />
+        <p className="text-sm text-fg-soft">Aday paneliniz hazırlanıyor…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative max-w-6xl mx-auto py-10 px-2 sm:px-4 space-y-8">
@@ -316,12 +493,12 @@ export default function CandidateEvidenceHub() {
         <div className="flex items-center gap-3">
           <Link
             href={candidateExtId ? `/candidates/${candidateExtId}` : "/login"}
-            className="btn btn-quiet text-xs px-4 py-2.5"
+            className="btn btn-quiet btn-sm"
           >
-            Profilimi Gör
+            Profilimi gör
           </Link>
-          <Link href="/jobs" className="btn btn-brand btn-shine text-xs px-4 py-2.5">
-            İş İlanlarını İncele
+          <Link href="/jobs" className="btn btn-brand btn-shine btn-sm">
+            İş ilanlarını incele
           </Link>
         </div>
       </div>
@@ -461,7 +638,7 @@ export default function CandidateEvidenceHub() {
                     value={accCategory}
                     disabled={publishingAcc}
                     onChange={(e) => setAccCategory(e.target.value as ProfessionCategory)}
-                    className="field text-xs"
+                    className="field field-sm"
                   >
                     {SELECTABLE_CATEGORIES.map((c) => (
                       <option key={c.key} value={c.key}>
@@ -486,7 +663,7 @@ export default function CandidateEvidenceHub() {
                     value={accTitle}
                     onChange={(e) => setAccTitle(e.target.value)}
                     placeholder="Örn: 10 yıllık makam şoförlüğü ve ileri sürüş sertifikaları"
-                    className="field text-xs"
+                    className="field field-sm"
                   />
                 </div>
               </div>
@@ -506,7 +683,7 @@ export default function CandidateEvidenceHub() {
                   value={accContent}
                   onChange={(e) => setAccContent(e.target.value)}
                   placeholder="Tamamladığınız işi, projeyi veya mesleki deneyimi kendi cümlelerinizle anlatın…"
-                  className="field text-xs leading-relaxed"
+                  className="field field-sm leading-relaxed"
                 />
               </div>
 
@@ -524,7 +701,7 @@ export default function CandidateEvidenceHub() {
                   value={accProofLink}
                   onChange={(e) => setAccProofLink(e.target.value)}
                   placeholder="https://drive.google.com/sertifikam veya https://github.com/projem"
-                  className="field text-xs"
+                  className="field field-sm"
                 />
               </div>
 
@@ -553,6 +730,7 @@ export default function CandidateEvidenceHub() {
                   <input
                     type="checkbox"
                     checked={accConsent}
+                    disabled={publishingAcc}
                     onChange={(e) => setAccConsent(e.target.checked)}
                     className="mt-1 accent-[var(--brand)] w-4 h-4 shrink-0"
                   />
@@ -569,7 +747,7 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={publishingAcc}
-                className="btn btn-brand btn-shine w-full text-xs"
+                className="btn btn-brand btn-shine btn-sm w-full"
               >
                 {publishingAcc ? "Analiz ediliyor…" : "Deneyimi Ekle"}
               </button>
@@ -590,10 +768,17 @@ export default function CandidateEvidenceHub() {
                     key={ev.id ?? `${ev.requirement_external_id}-${ev.created_at}`}
                     className="card card-lift p-5 space-y-2"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="font-semibold text-fg text-sm">
-                        Mesleki Deneyim Değerlendirmesi
-                      </h4>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <h4 className="font-semibold text-fg text-sm">
+                          Mesleki Deneyim Değerlendirmesi
+                        </h4>
+                        {formatEvidenceDate(ev.created_at) && (
+                          <p className="text-[11px] text-fg-mute tabular-nums">
+                            Eklendi: {formatEvidenceDate(ev.created_at)}
+                          </p>
+                        )}
+                      </div>
                       <span
                         className={`badge uppercase tracking-wider ${
                           AI_STATUS_STYLES[ev.status] ??
@@ -630,8 +815,15 @@ export default function CandidateEvidenceHub() {
           {/* Main CV Upload Box */}
           <div className="card p-7 space-y-6 relative overflow-hidden">
             {analyzing && (
-              <div className="absolute inset-0 bg-well/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-4 rounded-lg">
-                <div className="w-12 h-12 border-4 border-brand/25 border-t-brand rounded-full animate-spin" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="absolute inset-0 bg-well/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-4 rounded-lg"
+              >
+                <div
+                  className="w-12 h-12 border-4 border-brand/25 border-t-brand rounded-full animate-spin"
+                  aria-hidden="true"
+                />
                 <p className="text-fg font-semibold text-sm">
                   Belgeniz inceleniyor…
                 </p>
@@ -656,7 +848,7 @@ export default function CandidateEvidenceHub() {
                   value={selectedJobId}
                   disabled={analyzing}
                   onChange={(e) => setSelectedJobId(e.target.value)}
-                  className="field text-xs"
+                  className="field field-sm"
                 >
                   <option value="">— Genel özgeçmiş değerlendirmesi —</option>
                   {jobs.map((j) => (
@@ -698,7 +890,9 @@ export default function CandidateEvidenceHub() {
                     </span>
                   ) : (
                     <span className="block text-fg-mute text-xs">
-                      Dosyanızı seçmek için{" "}
+                      {/* After a successful analysis the file is cleared; invite
+                          the next document instead of repeating the first-run copy. */}
+                      {analysisResult ? "Başka bir belge yüklemek için" : "Dosyanızı seçmek için"}{" "}
                       <span className="text-brand underline underline-offset-2">
                         tıklayın
                       </span>{" "}
@@ -731,6 +925,7 @@ export default function CandidateEvidenceHub() {
                   <input
                     type="checkbox"
                     checked={consentVerified}
+                    disabled={analyzing}
                     onChange={(e) => setConsentVerified(e.target.checked)}
                     className="mt-1 accent-[var(--brand)] w-4 h-4"
                   />
@@ -796,7 +991,7 @@ export default function CandidateEvidenceHub() {
               <button
                 type="submit"
                 disabled={analyzing || !file}
-                className="btn btn-brand btn-shine w-full text-xs"
+                className="btn btn-brand btn-shine btn-sm w-full"
               >
                 {analyzing ? "Belge inceleniyor…" : "Belgemi Değerlendir"}
               </button>
@@ -810,25 +1005,48 @@ export default function CandidateEvidenceHub() {
           <div className="card p-7 space-y-5">
             <h2 className="text-base font-semibold text-fg flex items-center justify-between border-b border-line pb-3 tracking-tight">
               <span>Başvurularım</span>
-              <span className="badge bg-raised text-fg-soft border-line-strong tabular-nums">
-                {applications.length} başvuru
-              </span>
+              {loading ? (
+                // The count is unknown while loading — a "0 başvuru" badge
+                // here would be a lie until the data lands.
+                <span className="skeleton h-4 w-20 rounded-full" aria-hidden="true" />
+              ) : (
+                <span className="badge bg-raised text-fg-soft border-line-strong tabular-nums">
+                  {applications.length} başvuru
+                </span>
+              )}
             </h2>
 
             {loading ? (
-              <p className="text-xs text-fg-mute">Yükleniyor…</p>
+              // Skeleton rows shaped like the eventual application cards below —
+              // same pattern jobs/page.tsx uses for its own list — so this card
+              // doesn't pop from a bare sentence straight into full content.
+              <div className="space-y-3" role="status" aria-busy="true">
+                <span className="sr-only">Başvurularınız yükleniyor…</span>
+                {[0, 1].map((i) => (
+                  <div key={i} aria-hidden="true" className="card bg-well p-4 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="skeleton h-3.5 w-2/5" />
+                      <div className="skeleton h-4 w-20 rounded-full" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="skeleton h-3 w-1/4" />
+                      <div className="skeleton h-3 w-1/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : applications.length === 0 ? (
               <div className="text-center py-6 space-y-3">
                 <p className="text-xs text-fg-mute">
                   Henüz hiçbir iş ilanına başvurmadınız.
                 </p>
-                <Link href="/jobs" className="btn btn-quiet text-xs px-4 py-2 inline-flex">
+                <Link href="/jobs" className="btn btn-quiet btn-sm inline-flex">
                   İlanlara göz at
                 </Link>
               </div>
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                {applications.map((app) => (
+                {sortedApplications.map((app) => (
                   <div key={app.id} className="card card-lift bg-well p-4 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold text-fg">
@@ -856,7 +1074,7 @@ export default function CandidateEvidenceHub() {
                       </p>
                       <Link
                         href={`/reports/${app.id}`}
-                        className="text-[10px] text-brand hover:text-brand-strong hover:underline font-semibold shrink-0"
+                        className="text-xs py-1 text-brand hover:text-brand-strong hover:underline font-semibold shrink-0"
                       >
                         Raporu görüntüle &rarr;
                       </Link>
@@ -872,19 +1090,21 @@ export default function CandidateEvidenceHub() {
             <h3 className="text-sm font-semibold text-fg tracking-tight">
               Doğrulanmış kanıtlarım
             </h3>
-            <p className="text-xs text-fg-soft leading-relaxed">
-              {loading ? (
-                "Yükleniyor…"
-              ) : (
-                <>
-                  Sizin için kayıtlı{" "}
-                  <strong className="text-brand tabular-nums">
-                    {verifiedCount}
-                  </strong>{" "}
-                  doğrulanmış yetkinlik kanıtı bulunuyor.
-                </>
-              )}
-            </p>
+            {loading ? (
+              <div className="space-y-2" role="status" aria-busy="true">
+                <span className="sr-only">Kanıt özeti yükleniyor…</span>
+                <div className="skeleton h-3.5 w-4/5" aria-hidden="true" />
+                <div className="skeleton h-3.5 w-2/5" aria-hidden="true" />
+              </div>
+            ) : (
+              <p className="text-xs text-fg-soft leading-relaxed">
+                Sizin için kayıtlı{" "}
+                <strong className="text-brand tabular-nums">
+                  {verifiedCount}
+                </strong>{" "}
+                doğrulanmış yetkinlik kanıtı bulunuyor.
+              </p>
+            )}
             {pendingCount > 0 && (
               <p className="text-xs text-warn leading-relaxed">
                 <strong className="tabular-nums">{pendingCount}</strong> belgeniz
@@ -902,10 +1122,11 @@ export default function CandidateEvidenceHub() {
             {/* Reports are keyed by application id, not candidate id — a
                 candidate can have several applications, each with its own
                 report. This card is a summary, so it links to the most
-                recent one; every application below carries its own link. */}
-            {applications.length > 0 ? (
+                recent one (sortedApplications[0], newest-first — see above);
+                every application in "Başvurularım" carries its own link. */}
+            {sortedApplications.length > 0 ? (
               <Link
-                href={`/reports/${applications[0].id}`}
+                href={`/reports/${sortedApplications[0].id}`}
                 className="text-xs text-brand hover:text-brand-strong hover:underline font-semibold block transition-colors"
               >
                 Tam raporu incele &rarr;

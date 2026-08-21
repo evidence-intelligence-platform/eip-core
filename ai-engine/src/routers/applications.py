@@ -1,24 +1,28 @@
 """
 EIF: Job Application Router
 ---
-Version: 1.1.0
+Version: 1.2.0
 Owner: EIF Architecture Team
 Compliance: 05_DATABASE_SCHEMA.md — JOB_APPLICATIONS Entity
 """
 
+import logging
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlmodel import Session, or_, select
 
 from src.db.database import get_session
-from src.db.models import Candidate, JobApplication, JobPosting
+from src.db.models import Candidate, JobApplication, JobPosting, UserAccount
 from src.security.auth import verify_api_key
 from src.security.permissions import CurrentUser, require_employer, require_user
 from src.services.audit import record_audit
+from src.services.email_service import application_decision_email, send_email
 from src.services.traits import standout_traits_for
+
+logger = logging.getLogger("eip.applications")
 
 router = APIRouter(
     prefix="/api/v1/applications",
@@ -29,6 +33,48 @@ router = APIRouter(
 
 class ApplicationStatusUpdate(BaseModel):
     status: Literal["submitted", "reviewing", "accepted", "declined"]
+    # Optional message from the employer, carried into the candidate's
+    # decision e-mail and into the audit row's details. Not a column: the
+    # decision itself is what the table records, and the note has no reader
+    # after it has been delivered and audited.
+    note: str | None = Field(default=None, max_length=2000)
+
+
+# Statuses worth an e-mail. "submitted"/"reviewing" are pipeline bookkeeping
+# the candidate cannot act on; mailing those would train people to ignore the
+# one message that matters.
+DECISION_STATUSES = ("accepted", "declined")
+
+
+def _candidate_account_email(session: Session, candidate_id: int) -> str | None:
+    """
+    The address behind a candidate profile, or None when there is none to
+    reach: an unowned profile (imported/legacy rows have user_id NULL) or an
+    account deleted since the application was filed. Callers treat None as
+    "skip the mail" — never as an error.
+    """
+    candidate = session.get(Candidate, candidate_id)
+    if candidate is None or candidate.user_id is None:
+        return None
+    account = session.get(UserAccount, candidate.user_id)
+    return account.email if account else None
+
+
+def _send_decision_email(to: str, job_title: str | None, decision: str, note: str | None) -> None:
+    """
+    Background task: tells the applicant what was decided.
+
+    Both the template call and the delivery sit inside the guard. The decision
+    is committed before this runs, so nothing here — a provider outage, a
+    template bug — may reach the request that queued it or the transaction it
+    already closed. send_email swallows provider errors itself; this is the
+    outer belt, and it logs nothing that identifies the recipient.
+    """
+    try:
+        subject, body_html = application_decision_email(job_title, decision, note)
+        send_email(to, subject, body_html)
+    except Exception as exc:  # noqa: BLE001 — a notification may never escalate
+        logger.warning("Başvuru karar bildirimi gönderilemedi. error=%r", exc)
 
 
 class JobApplicationRead(BaseModel):
@@ -217,6 +263,7 @@ def create_application(
 def update_application_status(
     app_id: int,
     status_update: ApplicationStatusUpdate,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_employer),
 ) -> JobApplication:
@@ -224,6 +271,11 @@ def update_application_status(
     Updates status of a job application (e.g. accepted, declined, reviewing).
 
     Employers only: a candidate could previously accept their own application.
+
+    A final decision is also mailed to the applicant. Until that existed the
+    verdict lived only in a dashboard the candidate had to think to open, so
+    people learned they had been declined by checking, repeatedly, for a change
+    that had already happened.
     """
     application = session.exec(select(JobApplication).where(JobApplication.id == app_id)).first()
     if not application:
@@ -255,7 +307,26 @@ def update_application_status(
         actor_id=user.get("sub", "unknown"),
         action=f"application.decision.{status_update.status}",
         target_entity=f"application:{app_id}",
+        # The note is not a column on the application; the audit row is where
+        # it survives, so a decision and the reason given for it stay together.
+        details=status_update.note,
     )
     session.commit()
     session.refresh(application)
+
+    # Notification is a side effect of a decision that is already final: it is
+    # queued after the commit, resolves to nothing when there is no address to
+    # reach, and cannot fail the request (see _send_decision_email).
+    if application.status in DECISION_STATUSES:
+        recipient = _candidate_account_email(session, application.candidate_id)
+        if recipient:
+            job = session.get(JobPosting, application.job_id)
+            background_tasks.add_task(
+                _send_decision_email,
+                recipient,
+                job.title if job else None,
+                application.status,
+                status_update.note,
+            )
+
     return application

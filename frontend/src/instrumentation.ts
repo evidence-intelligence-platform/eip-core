@@ -12,10 +12,13 @@ import * as Sentry from "@sentry/nextjs";
 export async function register() {
   if (!process.env.SENTRY_DSN) return;
 
+  // A typo'd rate must fall back to the default, not reach Sentry as NaN.
+  const rate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1");
+
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.SENTRY_ENVIRONMENT ?? "production",
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"),
+    tracesSampleRate: Number.isFinite(rate) ? rate : 0.1,
     // KVKK: no request headers / IPs attached to events unless opted in later.
     sendDefaultPii: false,
   });

@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 
 /**
- * A 2px brass reading-progress line pinned under the navbar. Scale-only
- * updates via rAF; invisible until the reader actually scrolls, and gone
- * entirely on pages short enough not to scroll.
+ * A 2px brass reading-progress line pinned to the top of the viewport,
+ * above the navbar. Scale-only updates via rAF; invisible until the reader
+ * actually scrolls, and gone entirely on pages short enough not to scroll.
  */
 export default function ScrollProgress() {
   const barRef = useRef<HTMLDivElement>(null);

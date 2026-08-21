@@ -10,9 +10,9 @@ export default defineConfig({
   },
   test: {
     include: ["src/__tests__/**/*.test.{ts,tsx}"],
-    // Pure logic tests — nothing renders, so no jsdom needed. If component
-    // rendering tests are added later, switch to environment: "jsdom" and add
-    // @testing-library/react.
+    // Pure logic tests run in node by default; the component tests that
+    // render a DOM (AuthContext, Navbar) opt into jsdom per file via the
+    // `// @vitest-environment jsdom` pragma on their first line.
     environment: "node",
   },
 });

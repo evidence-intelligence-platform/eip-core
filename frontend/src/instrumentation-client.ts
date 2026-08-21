@@ -8,10 +8,13 @@
 import * as Sentry from "@sentry/nextjs";
 
 if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  // A typo'd rate must fall back to the default, not reach Sentry as NaN.
+  const rate = Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? "0.1");
+
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
-    tracesSampleRate: Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? "0.1"),
+    tracesSampleRate: Number.isFinite(rate) ? rate : 0.1,
     // KVKK: never attach personal data to browser events.
     sendDefaultPii: false,
   });

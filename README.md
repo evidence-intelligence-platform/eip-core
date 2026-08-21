@@ -89,9 +89,10 @@ the browser.
 ## 🧪 Running Tests
 
 ```bash
-# Backend
+# Backend — pick the line for your platform:
 cd ai-engine
-venv\Scripts\python.exe -m pytest tests/ -q
+venv\Scripts\python.exe -m pytest tests/ -q   # Windows
+venv/bin/python -m pytest tests/ -q           # Linux/macOS
 
 # Frontend
 cd frontend

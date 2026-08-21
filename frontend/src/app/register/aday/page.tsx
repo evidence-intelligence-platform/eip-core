@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { SealMark } from "@/components/illustrations";
+import { PersonIcon } from "@/components/CategoryIcon";
 import { ApiError } from "@/lib/api";
 
 export default function CandidateRegisterPage() {
@@ -17,13 +18,39 @@ export default function CandidateRegisterPage() {
   const { user, loading: authLoading, register } = useAuth();
   const router = useRouter();
 
-  // A signed-in candidate landing here (e.g. a stale bookmark) should not
-  // see their own registration form again — send them to their panel.
+  // A signed-in candidate (or any signed-in user) landing here — e.g. a
+  // stale bookmark, shared link, or browser back/forward — should not see a
+  // fresh signup form: submitting it would silently create a new account
+  // and overwrite their current session. Mirrors register/isveren.
   useEffect(() => {
-    if (!authLoading && user?.role === "candidate") {
-      router.replace("/candidate/hub");
+    if (!authLoading && user) {
+      router.replace(
+        user.role === "admin"
+          ? "/admin/moderation"
+          : user.role === "employer"
+          ? "/employer/dashboard"
+          : "/candidate/hub"
+      );
     }
   }, [authLoading, user, router]);
+
+  // While the session is being restored — or the redirect above is already
+  // in flight — rendering the form would flash a signup screen at someone
+  // who is signed in; hold a brief wait state instead.
+  if (authLoading || user) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+        <SealMark className="w-12 h-12 opacity-80 animate-float" />
+        <div role="status" className="flex items-center gap-2 text-fg-mute text-sm">
+          <span
+            className="w-4 h-4 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
+            aria-hidden="true"
+          />
+          {user ? "Yönlendiriliyorsunuz…" : "Yükleniyor…"}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +73,34 @@ export default function CandidateRegisterPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto my-12 card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
+    <div className="relative max-w-md mx-auto my-12">
+      <div
+        className="aurora-blob -top-16 -right-14 w-64 h-64 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "20s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--ok) 14%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        className="aurora-blob -bottom-16 -left-14 w-56 h-56 -z-10"
+        aria-hidden="true"
+        style={{
+          ["--aurora-dur" as string]: "28s",
+          animationDelay: "-8s",
+          background:
+            "radial-gradient(closest-side, color-mix(in oklab, var(--brand) 8%, transparent), transparent 70%)",
+        }}
+      />
+      <div className="card border-gradient card-glow p-8 space-y-6 animate-fade-in-up">
       <div className="text-center space-y-3">
         <SealMark className="w-10 h-10 mx-auto" />
         <span className="badge bg-ok/10 text-ok border-ok/30 uppercase tracking-wider">
           Aday
         </span>
-        <h1 className="text-2xl font-semibold text-fg tracking-tight">
+        <PersonIcon className="w-8 h-8 text-ok mx-auto" />
+        <h1 className="text-title text-fg">
           Aday Hesabı Oluştur
         </h1>
         <p className="text-sm text-fg-soft">
@@ -133,7 +181,7 @@ export default function CandidateRegisterPage() {
         </div>
 
         <button type="submit" disabled={loading} className="btn btn-brand btn-shine w-full">
-          {loading ? "Hesap oluşturuluyor…" : "Hesap Oluştur"}
+          {loading ? "Hesap oluşturuluyor…" : "Hesap oluştur"}
         </button>
       </form>
 
@@ -164,7 +212,7 @@ export default function CandidateRegisterPage() {
             href="/login"
             className="text-brand hover:text-brand-strong hover:underline font-semibold transition-colors"
           >
-            Giriş Yap
+            Giriş yap
           </Link>
         </p>
         <p>
@@ -176,6 +224,7 @@ export default function CandidateRegisterPage() {
             İşveren kaydına geçin
           </Link>
         </p>
+      </div>
       </div>
     </div>
   );

@@ -133,6 +133,12 @@ export interface ApplicationReportItem {
    * read the same percentage off the same document.
    */
   counted: boolean;
+  /**
+   * A counted row the model itself was unsure about: auto-approved as text
+   * evidence, but scored below the engine's documented human-review threshold,
+   * so no person has checked this particular verdict yet.
+   */
+  low_confidence?: boolean;
 }
 
 /**
@@ -157,6 +163,22 @@ export interface ApplicationReport {
   /** Rows that entered the score denominator. */
   counted_count: number;
   items: ApplicationReportItem[];
+  /**
+   * Transparency flags the engine serves to *every* reader, employers
+   * included: they are booleans, not document content, so nothing the
+   * moderation queue is hiding leaks through them. An employer whose copy of
+   * `items` was filtered down to nothing would otherwise read 0% as "this
+   * candidate submitted nothing" when the truth is "everything they sent is
+   * still awaiting review".
+   *
+   * Typed optional because there is no runtime validation on this payload —
+   * an engine that predates the flags simply omits them.
+   */
+  has_pending_evidence?: boolean;
+  has_low_confidence_evidence?: boolean;
+  /** The engine's own Turkish wording; null whenever the matching flag is false. */
+  pending_evidence_note?: string | null;
+  low_confidence_note?: string | null;
 }
 
 /**
@@ -181,6 +203,29 @@ const getHeaders = (token?: string, extra: Record<string, string> = {}) => {
   return headers;
 };
 
+/**
+ * Headers for the auth endpoints themselves (login/register/forgot/reset).
+ * These calls establish or replace a session, so a stale Bearer token from a
+ * previous one must never ride along with the new credentials.
+ */
+const getAnonymousHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
+  ...extra,
+});
+
+/**
+ * Central hook for dead sessions. AuthContext registers its cleanup here so a
+ * 401 from *any* API call ends the stale session app-wide (Navbar, route
+ * guards) instead of every screen repeating the same "giriş yapın" error
+ * while the UI still shows the user as signed in. The auth endpoints
+ * (login/register/forgot/reset) never trigger it — a wrong password is not
+ * an expired session.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 /** Error carrying the HTTP status, so callers can branch on it (e.g. 409). */
 export class ApiError extends Error {
   status: number;
@@ -196,7 +241,15 @@ export class ApiError extends Error {
  * FastAPI validation errors put an *array* of objects in `detail`; rendering
  * that straight into JSX is what produced "[object Object]" on screen.
  */
-async function toApiError(res: Response, fallback: string): Promise<ApiError> {
+async function toApiError(
+  res: Response,
+  fallback: string,
+  opts: { isAuthEndpoint?: boolean } = {}
+): Promise<ApiError> {
+  if (res.status === 401 && !opts.isAuthEndpoint) {
+    // The session is stale — let AuthContext clear it (see setUnauthorizedHandler).
+    onUnauthorized?.();
+  }
   const body = await res.json().catch(() => null);
   const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : null;
 
@@ -265,7 +318,7 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
 export async function loginUser(email: string, password: string) {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
-    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    headers: getAnonymousHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
   if (res.status === 401) {
@@ -275,7 +328,7 @@ export async function loginUser(email: string, password: string) {
     // what actually happened: a wrong e-mail or password.
     throw new ApiError("E-posta veya şifre hatalı.", 401);
   }
-  if (!res.ok) throw await toApiError(res, "E-posta veya şifre hatalı.");
+  if (!res.ok) throw await toApiError(res, "E-posta veya şifre hatalı.", { isAuthEndpoint: true });
   return res.json();
 }
 
@@ -296,7 +349,7 @@ export async function registerUser(
 ) {
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
-    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    headers: getAnonymousHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       email,
       password,
@@ -318,7 +371,7 @@ export async function registerUser(
     }
     throw new ApiError(detail ?? "Kayıt tamamlanamadı. Bilgilerinizi kontrol edin.", 400);
   }
-  if (!res.ok) throw await toApiError(res, "Kayıt tamamlanamadı.");
+  if (!res.ok) throw await toApiError(res, "Kayıt tamamlanamadı.", { isAuthEndpoint: true });
   return res.json();
 }
 
@@ -360,10 +413,11 @@ export async function getMe(token: string) {
 export async function requestPasswordReset(email: string): Promise<{ message: string }> {
   const res = await fetch(`${API_URL}/auth/forgot-password`, {
     method: "POST",
-    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    headers: getAnonymousHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw await toApiError(res, "İstek gönderilemedi. Lütfen tekrar deneyin.");
+  if (!res.ok)
+    throw await toApiError(res, "İstek gönderilemedi. Lütfen tekrar deneyin.", { isAuthEndpoint: true });
   return res.json();
 }
 
@@ -371,7 +425,7 @@ export async function requestPasswordReset(email: string): Promise<{ message: st
 export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
   const res = await fetch(`${API_URL}/auth/reset-password`, {
     method: "POST",
-    headers: getHeaders(undefined, { "Content-Type": "application/json" }),
+    headers: getAnonymousHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ token, new_password: newPassword }),
   });
   if (res.status === 400) {
@@ -386,7 +440,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
     );
   }
   if (!res.ok)
-    throw await toApiError(res, "Şifre güncellenemedi. Bağlantı geçersiz veya süresi dolmuş olabilir.");
+    throw await toApiError(res, "Şifre güncellenemedi. Bağlantı geçersiz veya süresi dolmuş olabilir.", {
+      isAuthEndpoint: true,
+    });
   return res.json();
 }
 
@@ -401,6 +457,43 @@ export async function deleteMyAccount(): Promise<void> {
     headers: getHeaders(),
   });
   if (!res.ok) throw await toApiError(res, "Hesabınız silinemedi. Lütfen tekrar deneyin.");
+}
+
+/** One data category in the export, with how many records it carries. */
+export interface DataExportCategory {
+  key: string;
+  label: string;
+  count: number;
+}
+
+/**
+ * The KVKK md. 11 export document. Only the self-describing header is typed:
+ * the per-category record shapes are the engine's to define, and the page
+ * offers the file as a download rather than rendering the rows, so pinning
+ * them here would be a second contract to keep in sync for no gain.
+ */
+export interface DataExport {
+  format_version: string;
+  platform: string;
+  exported_at: string;
+  notes: string[];
+  categories: DataExportCategory[];
+  [category: string]: unknown;
+}
+
+/**
+ * Erasure's counterpart: everything the platform holds about the caller.
+ * Bound to the account behind the token — there is no identifier to pass,
+ * so there is nothing for a caller to swap. Rate-limited server-side (5/min),
+ * which surfaces here as the usual 429 message.
+ */
+export async function exportMyData(): Promise<DataExport> {
+  const res = await fetch(`${API_URL}/auth/me/export`, {
+    headers: getHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "Verileriniz dışa aktarılamadı. Lütfen tekrar deneyin.");
+  return res.json();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -469,11 +562,21 @@ export async function createApplication(application: Partial<JobApplication>): P
   return res.json();
 }
 
-export async function updateApplicationStatus(appId: number, status: string): Promise<JobApplication> {
+/**
+ * `note` reaches the candidate as the employer's own words in the decision
+ * e-mail — it is not stored on the application and never comes back in the
+ * response, so the dashboard must not expect to read it again.
+ */
+export async function updateApplicationStatus(
+  appId: number,
+  status: string,
+  note?: string
+): Promise<JobApplication> {
+  const trimmed = note?.trim();
   const res = await fetch(`${API_URL}/applications/${appId}`, {
     method: "PATCH",
     headers: getHeaders(undefined, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(trimmed ? { status, note: trimmed } : { status }),
   });
   if (!res.ok) throw await toApiError(res, "Başvuru durumu güncellenemedi.");
   return res.json();
@@ -533,7 +636,7 @@ export async function createRequirement(requirement: Partial<Requirement>): Prom
 }
 
 export async function getCandidateEvidences(external_id: string): Promise<Evidence[]> {
-  const res = await fetch(`${API_URL}/candidates/${external_id}/evidences`, {
+  const res = await fetch(`${API_URL}/candidates/${encodeURIComponent(external_id)}/evidences`, {
     headers: getHeaders(),
     cache: "no-store",
   });
@@ -550,7 +653,9 @@ export async function analyzeCandidateEvidence(
   // The user's actual consent, not a hardcoded true — sending true regardless
   // of what the person ticked makes the consent gate meaningless.
   consentVerified: boolean
-) {
+  // Same ExtractionResult shape the file endpoint returns (the engine shares
+  // the LLM service between them), so both paths read one typed contract.
+): Promise<FileAnalysisResponse> {
   try {
     const payload = {
       payload: {
@@ -578,10 +683,13 @@ export async function analyzeCandidateEvidence(
     const data = await response.json();
     return { success: true, data };
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      return { success: false, error: error.message };
+    // Keep the HTTP status for callers; anything non-ApiError here is a
+    // network drop or an unparseable body, whose English message (e.g. a
+    // JSON SyntaxError) must never reach the user.
+    if (error instanceof ApiError) {
+      return { success: false, error: error.message, status: error.status };
     }
-    return { success: false, error: "Bilinmeyen bir hata oluştu." };
+    return { success: false, error: "Kanıt analizi tamamlanamadı. Lütfen tekrar deneyin." };
   }
 }
 
@@ -600,7 +708,10 @@ export interface FileAnalysisData {
 
 export type FileAnalysisResponse =
   | { success: true; data: FileAnalysisData }
-  | { success: false; error: string };
+  // `status` lets callers branch on *why* it failed (401 session, 413 size,
+  // 429 rate limit); it is absent when the failure never got an HTTP status
+  // (network drop, unparseable body).
+  | { success: false; error: string; status?: number };
 
 export async function analyzeCandidateFile(
   candidateId: string,
@@ -629,10 +740,12 @@ export async function analyzeCandidateFile(
     const data = await response.json();
     return { success: true, data };
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      return { success: false, error: error.message };
+    // Same contract as analyzeCandidateEvidence: status preserved, no raw
+    // parser/network message leaking into the UI.
+    if (error instanceof ApiError) {
+      return { success: false, error: error.message, status: error.status };
     }
-    return { success: false, error: "Bilinmeyen bir hata oluştu." };
+    return { success: false, error: "Dosya analizi tamamlanamadı. Lütfen tekrar deneyin." };
   }
 }
 

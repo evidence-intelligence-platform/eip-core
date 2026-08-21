@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { IconHumanReview, SealMark } from "@/components/illustrations";
 import { CategoryIcon, SearchIcon } from "@/components/CategoryIcon";
+import Reveal from "@/components/Reveal";
 
 const AI_STATUS_LABELS: Record<string, string> = {
   VERIFIED: "Doğrulandı",
@@ -41,6 +42,12 @@ const AI_STATUS_STYLES: Record<string, string> = {
 
 export default function JobListingsPage() {
   const { user } = useAuth();
+  // Employers/admins can browse listings but the platform only ever accepts
+  // applications from candidate accounts (handleApplySubmit rejects them at
+  // submit time regardless); gating the CTA up front — same role split the
+  // home page uses for isCandidate/isEmployer — avoids sending this class of
+  // user through a full multi-field, file-upload form just to be turned away.
+  const isNonCandidateAccount = user?.role === "employer" || user?.role === "admin";
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -218,7 +225,17 @@ export default function JobListingsPage() {
     setChatgptJsonFile(null);
     setCertificateLink("");
     if (user?.email) {
-      setCandidateName(user.email.split("@")[0].replace(".", " "));
+      // Best-effort prefill from the address' local part: every dot becomes
+      // a space (not just the first) and each word is capitalised with
+      // Turkish casing rules, so "ayse.nur.yilmaz" reads as a name.
+      const guessedName = user.email
+        .split("@")[0]
+        .replace(/\./g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toLocaleUpperCase("tr") + w.slice(1))
+        .join(" ");
+      setCandidateName(guessedName);
     }
   };
 
@@ -336,10 +353,22 @@ export default function JobListingsPage() {
 
       // 7. Process ChatGPT Export JSON
       if (chatgptJsonFile) {
-        const text = await chatgptJsonFile.text();
-        const r = await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), GENERAL_REQ.chatgpt, GENERAL_DESC.chatgpt, consentVerified);
-        if (r.success) extraSources++;
-        else failedSources.push("Sohbet dışa aktarımı");
+        // Reading the file can itself throw (file moved or locked since it
+        // was picked). By this point the application record already exists,
+        // so a read failure must land in failedSources like any other
+        // source — falling through to the outer catch would tell the user
+        // to "try again" and invite a duplicate application.
+        let text: string | null = null;
+        try {
+          text = await chatgptJsonFile.text();
+        } catch {
+          failedSources.push("Sohbet dışa aktarımı");
+        }
+        if (text !== null) {
+          const r = await analyzeCandidateEvidence(extId, "CHATGPT_EXPORT", text.slice(0, 4000), GENERAL_REQ.chatgpt, GENERAL_DESC.chatgpt, consentVerified);
+          if (r.success) extraSources++;
+          else failedSources.push("Sohbet dışa aktarımı");
+        }
       }
 
       setSubmitSuccessData({
@@ -372,8 +401,8 @@ export default function JobListingsPage() {
       />
 
       <div className="space-y-8 max-w-6xl mx-auto py-12 px-4">
-        {/* Header */}
-        <div className="text-center space-y-3 border-b border-line pb-8">
+        {/* Header — same entrance beat as the landing hero it follows from */}
+        <div className="text-center space-y-3 border-b border-line pb-8 animate-fade-in-up">
           <p className="eyebrow">Açık ilanlar</p>
           <h1 className="text-title text-fg">
             İlanı seçin, <span className="text-brand italic">belgenizle</span> başvurun
@@ -387,8 +416,21 @@ export default function JobListingsPage() {
 
         {/* Search */}
         <div className="max-w-xl mx-auto relative">
+          {/* This input has its own '✕' clear button (below) once searchQuery
+              is non-empty; without suppressing it, Chromium/WebKit also draws
+              its native round cancel icon at the same right edge, showing two
+              overlapping clear controls. globals.css is out of scope for this
+              page, so the rule is scoped here instead of added there. */}
+          <style>{`
+            #ilan-arama-kutusu::-webkit-search-cancel-button,
+            #ilan-arama-kutusu::-webkit-search-decoration {
+              -webkit-appearance: none;
+              appearance: none;
+            }
+          `}</style>
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-mute pointer-events-none" />
           <input
+            id="ilan-arama-kutusu"
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -445,7 +487,7 @@ export default function JobListingsPage() {
               onClick={fetchData}
               className="px-3 py-1.5 bg-err/10 hover:bg-err/20 border border-err/30 text-err rounded-md text-xs font-semibold transition-colors"
             >
-              Tekrar Dene
+              Tekrar dene
             </button>
           </div>
         )}
@@ -485,11 +527,25 @@ export default function JobListingsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6">
+          // Same cascade the landing page's own persona/feature cards use —
+          // the list the candidate actually browses gets the same entrance
+          // choreography as the marketing page that sent them here.
+          <Reveal stagger className="grid grid-cols-1 gap-6">
             {personalized && (
               <p className="text-xs text-brand/90 flex items-center gap-1.5 -mb-2">
                 <span className="dot-live" aria-hidden="true" />
-                İlgi alanlarınıza göre sıralandı — düzenlemek için Aday Paneli.
+                {/* One span so the sentence stays a single flex item and can
+                    wrap as prose around the inline link. */}
+                <span>
+                  İlgi alanlarınıza göre sıralandı — düzenlemek için{" "}
+                  <Link
+                    href="/candidate/hub"
+                    className="underline underline-offset-2 hover:text-brand-strong transition-colors"
+                  >
+                    Aday Paneli
+                  </Link>
+                  .
+                </span>
               </p>
             )}
             {orderedJobs.map((job) => {
@@ -530,18 +586,36 @@ export default function JobListingsPage() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => handleOpenApplyModal(job)}
-                    title={alreadyApplied ? "Bu ilana daha önce başvurdunuz; yine de tekrar başvurabilirsiniz." : undefined}
-                    className={
-                      alreadyApplied
-                        ? "btn btn-quiet text-sm shrink-0"
-                        : "btn btn-brand btn-shine text-sm shrink-0"
-                    }
-                  >
-                    {alreadyApplied ? "Tekrar başvur" : "Belgelerinle başvur"}
-                    <span aria-hidden="true">&rarr;</span>
-                  </button>
+                  {isNonCandidateAccount ? (
+                    /* title-only hints never reach touch or keyboard users;
+                       the reason lives in a visible line under the button. */
+                    <div className="shrink-0 space-y-1.5 md:text-right">
+                      <button
+                        type="button"
+                        disabled
+                        className="btn btn-quiet text-sm opacity-50 cursor-not-allowed"
+                      >
+                        Aday hesabı gerekli
+                      </button>
+                      <p className="text-[11px] text-fg-mute leading-relaxed md:max-w-[13rem]">
+                        Bu hesap bir aday hesabı değil. Başvurmak için aday
+                        hesabıyla giriş yapın.
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleOpenApplyModal(job)}
+                      title={alreadyApplied ? "Bu ilana daha önce başvurdunuz; yine de tekrar başvurabilirsiniz." : undefined}
+                      className={
+                        alreadyApplied
+                          ? "btn btn-quiet text-sm shrink-0"
+                          : "btn btn-brand btn-shine text-sm shrink-0"
+                      }
+                    >
+                      {alreadyApplied ? "Tekrar başvur" : "Belgelerinle başvur"}
+                      <span aria-hidden="true">&rarr;</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-4 bg-well rounded-md border border-line text-sm text-fg-soft leading-relaxed transition-colors group-hover:border-line-strong">
@@ -550,7 +624,7 @@ export default function JobListingsPage() {
               </div>
               );
             })}
-          </div>
+          </Reveal>
         )}
 
         {/* Apply Modal */}
@@ -644,14 +718,14 @@ export default function JobListingsPage() {
                   <div className="flex flex-wrap justify-center gap-3 pt-2">
                     <Link
                       href={`/reports/${submitSuccessData.appId}`}
-                      className="btn btn-brand text-xs px-5 py-2.5"
+                      className="btn btn-brand btn-sm"
                     >
                       Raporumu ve kanıtlarımı gör
                       <span aria-hidden="true">&rarr;</span>
                     </Link>
                     <Link
                       href="/candidate/hub"
-                      className="btn btn-quiet text-xs px-5 py-2.5"
+                      className="btn btn-quiet btn-sm"
                     >
                       Aday paneline git
                     </Link>
@@ -667,11 +741,11 @@ export default function JobListingsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <Link href="/login" className="btn btn-brand text-xs px-5 py-2.5">
-                      Giriş Yap
+                    <Link href="/login" className="btn btn-brand btn-sm">
+                      Giriş yap
                     </Link>
-                    <Link href="/register" className="btn btn-quiet text-xs px-5 py-2.5">
-                      Hesap Oluştur
+                    <Link href="/register" className="btn btn-quiet btn-sm">
+                      Hesap oluştur
                     </Link>
                   </div>
                 </div>
@@ -796,7 +870,7 @@ export default function JobListingsPage() {
                         value={linkedinUrl}
                         onChange={(e) => setLinkedinUrl(e.target.value)}
                         placeholder="https://linkedin.com/in/aday-profil-adi"
-                        className="field text-xs"
+                        className="field field-sm"
                       />
                     </div>
 
@@ -815,7 +889,7 @@ export default function JobListingsPage() {
                         value={certificateLink}
                         onChange={(e) => setCertificateLink(e.target.value)}
                         placeholder="https://drive.google.com/sertifikam-ehliyetim"
-                        className="field text-xs"
+                        className="field field-sm"
                       />
                     </div>
 
@@ -834,7 +908,7 @@ export default function JobListingsPage() {
                         value={githubUrl}
                         onChange={(e) => setGithubUrl(e.target.value)}
                         placeholder="https://portfoyum.com veya https://github.com/proje"
-                        className="field text-xs"
+                        className="field field-sm"
                       />
                     </div>
 
@@ -883,6 +957,13 @@ export default function JobListingsPage() {
                         <span className="truncate">{chatgptJsonFile ? chatgptJsonFile.name : "conversations.json dosyanızı yükleyin…"}</span>
                         <span className="text-[10px] text-brand font-semibold shrink-0">Gözat</span>
                       </button>
+                      {/* The export is sliced to its first 4000 characters
+                          before analysis (see handleApplySubmit) — say so
+                          instead of silently truncating. */}
+                      <p className="mt-1 text-[10px] text-fg-mute">
+                        Büyük dışa aktarımlarda dosyanın yalnızca ilk bölümü
+                        değerlendirilir.
+                      </p>
                     </div>
                   </div>
 
@@ -917,16 +998,16 @@ export default function JobListingsPage() {
                       type="button"
                       disabled={submitting}
                       onClick={() => setSelectedJob(null)}
-                      className="btn btn-quiet text-xs px-4 py-2.5"
+                      className="btn btn-quiet btn-sm"
                     >
                       İptal
                     </button>
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="btn btn-brand text-xs px-6 py-3"
+                      className="btn btn-brand btn-sm"
                     >
-                      {submitting ? "Belgeler inceleniyor…" : "Başvuruyu ve Belgeleri Gönder"}
+                      {submitting ? "Belgeler inceleniyor…" : "Başvuruyu ve belgeleri gönder"}
                     </button>
                   </div>
                 </form>
